@@ -24,6 +24,7 @@ app.use(express.json());
 // EXE ve diger public dosyalari HTTP ile sun
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/scripts', express.static(path.join(__dirname, '..', 'scripts')));
+app.use(express.static(path.join(__dirname, '..', 'dist')));
 
 app.get('/api/health', (req, res) => {
   res.json({

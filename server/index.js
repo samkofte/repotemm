@@ -653,7 +653,8 @@ wss.on('connection', (ws, req) => {
           const AUDITOR_FORBIDDEN = new Set([
             'MOUSE_INPUT', 'KEY_INPUT', 'BLACKOUT_SCREEN', 'LOCK_INPUT',
             'FS_UPLOAD', 'FS_DELETE', 'FS_EXEC', 'FS_MKDIR',
-            'KILL_PROCESS', 'SERVICE_ACTION', 'POWER_ACTION', 'AGENT_UPGRADE'
+            'KILL_PROCESS', 'SERVICE_ACTION', 'POWER_ACTION', 'AGENT_UPGRADE',
+            'CLIPBOARD_SET'
           ]);
 
           if (operatorRole === 'AUDITOR' && AUDITOR_FORBIDDEN.has(cmd.type)) {

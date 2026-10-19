@@ -158,7 +158,8 @@ test('RBAC: AUDITOR Action Filtering and Permission Matrix', () => {
   const AUDITOR_FORBIDDEN = new Set([
     'MOUSE_INPUT', 'KEY_INPUT', 'BLACKOUT_SCREEN', 'LOCK_INPUT',
     'FS_UPLOAD', 'FS_DELETE', 'FS_EXEC', 'FS_MKDIR',
-    'KILL_PROCESS', 'SERVICE_ACTION', 'POWER_ACTION', 'AGENT_UPGRADE'
+    'KILL_PROCESS', 'SERVICE_ACTION', 'POWER_ACTION', 'AGENT_UPGRADE',
+    'CLIPBOARD_SET'
   ]);
 
   function isActionAllowed(role, action) {
@@ -171,6 +172,7 @@ test('RBAC: AUDITOR Action Filtering and Permission Matrix', () => {
   assert.strictEqual(isActionAllowed('AUDITOR', 'MOUSE_INPUT'), false);
   assert.strictEqual(isActionAllowed('AUDITOR', 'FS_UPLOAD'), false);
   assert.strictEqual(isActionAllowed('AUDITOR', 'KILL_PROCESS'), false);
+  assert.strictEqual(isActionAllowed('AUDITOR', 'CLIPBOARD_SET'), false);
   assert.strictEqual(isActionAllowed('AUDITOR', 'SCREEN_VIEW'), true);
 
   assert.strictEqual(isActionAllowed('HELPDESK', 'POWER_ACTION_SHUTDOWN'), false);
@@ -178,3 +180,34 @@ test('RBAC: AUDITOR Action Filtering and Permission Matrix', () => {
 
   assert.strictEqual(isActionAllowed('SUPER_ADMIN', 'POWER_ACTION_SHUTDOWN'), true);
 });
+
+test('DeviceRegistry: ALERT_OFFLINE Heartbeat Expiration (45s Inactivity)', async () => {
+  const { DeviceRegistry } = await import('../server/registry.js');
+  const reg = new DeviceRegistry(':memory:');
+
+  const staleHwid = 'a'.repeat(64);
+  reg.registerOrAuthenticate({
+    hwid: staleHwid,
+    tenantId: 'tenant_default',
+    deviceToken: 'tok_dev_stale',
+    systemInfo: {
+      hostname: 'STALE-SRV-01',
+      os: 'Windows Server 2022'
+    }
+  }, '192.168.10.88');
+
+  // Telemetry set with lastSeen = 60 seconds ago
+  const pastTime = Date.now() - 60000;
+  const dev = reg.devices.get(staleHwid);
+  dev.lastSeen = pastTime;
+  dev.telemetry = {
+    cpuPercent: 12.0,
+    alerts: []
+  };
+
+  const allDevs = reg.getAllDevices();
+  const foundStale = allDevs.find(d => d.hwid === staleHwid);
+  assert.ok(foundStale);
+  assert.ok(foundStale.telemetry.alerts.includes('ALERT_OFFLINE'), '45 saniye sessiz kalan makine ALERT_OFFLINE içermelidir');
+});
+

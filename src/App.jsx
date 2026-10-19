@@ -71,6 +71,9 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
   const [registeredDevices, setRegisteredDevices] = useState([]);
+  const [isClipboardMenuOpen, setIsClipboardMenuOpen] = useState(false);
+  const [clipboardToastText, setClipboardToastText] = useState(null);
+  const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
 
   // Mouse / Canvas / Screen state
 
@@ -345,6 +348,34 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (clipboardToastText) {
+      const t = setTimeout(() => setClipboardToastText(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [clipboardToastText]);
+
+  const sendLocalClipboardToRemote = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        alert('Yerel panoda kopyalanmış bir metin bulunamadı.');
+        return;
+      }
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({ type: 'CLIPBOARD_SET', text }));
+      }
+    } catch (err) {
+      alert('Pano erişim hatası: ' + err.message);
+    }
+  };
+
+  const fetchRemoteClipboard = () => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: 'CLIPBOARD_GET' }));
+    }
+  };
+
   const changeStreamQuality = (newQuality) => {
     setStreamQuality(newQuality);
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -587,6 +618,13 @@ export default function App() {
               message: `Uzaktan erişim izni kullanıcı tarafından reddedildi (${data.reason || 'REJECTED'}).`
             });
           }
+        } else if (data.type === 'CLIPBOARD_CONTENT' || data.type === 'CLIPBOARD_SYNC') {
+          if (data.text) {
+            setClipboardToastText(data.type === 'CLIPBOARD_SYNC' ? 'Uzak panodan otomatik kopyalandı' : 'Uzak panodan metin alındı');
+            navigator.clipboard.writeText(data.text).catch(() => {});
+          }
+        } else if (data.type === 'CLIPBOARD_ACK') {
+          setClipboardToastText(data.success ? 'Metin uzak panoya başarıyla yapıştırıldı' : 'Panoya yapıştırma başarısız');
         }
       } catch (e) {
 
@@ -1094,7 +1132,13 @@ export default function App() {
       h.ip.toLowerCase().includes(searchFilter.toLowerCase()) ||
       h.user.toLowerCase().includes(searchFilter.toLowerCase());
     const matchesGroup = selectedGroup === 'ALL' || h.domain === selectedGroup;
-    return matchesSearch && matchesGroup;
+    if (!matchesSearch || !matchesGroup) return false;
+    if (showOnlyAlerts) {
+      const regDev = registeredDevices.find(d => d.primaryIp === h.ip || d.hostname?.toLowerCase() === h.name?.toLowerCase());
+      const alerts = regDev?.telemetry?.alerts || [];
+      return alerts.length > 0;
+    }
+    return true;
   });
 
   // Fleet Live Monitoring & Snapshots State
@@ -1756,6 +1800,44 @@ export default function App() {
                   <Bell className="w-3.5 h-3.5" />
                 </button>
 
+                {/* CLIPBOARD SYNC DROPDOWN */}
+                <div className="relative">
+                  <button
+                    onClick={() => setIsClipboardMenuOpen(!isClipboardMenuOpen)}
+                    className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] flex items-center gap-1 border border-slate-700 font-semibold text-slate-200 hover:border-slate-600 transition"
+                    title="Uzak Pano Senkronizasyonu (Kopyala / Yapıştır)"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Pano</span>
+                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                  </button>
+                  {isClipboardMenuOpen && (
+                    <div className="absolute left-0 top-full mt-2 flex flex-col bg-slate-950 border border-slate-800 rounded-xl shadow-2xl py-1.5 z-50 min-w-[230px] backdrop-blur-lg">
+                      <div className="px-3 py-1 text-[10px] text-slate-500 uppercase tracking-wider font-bold">Uzak Pano Senkronu</div>
+                      <button
+                        onClick={() => {
+                          setIsClipboardMenuOpen(false);
+                          sendLocalClipboardToRemote();
+                        }}
+                        className="px-3 py-1.5 text-xs text-left hover:bg-slate-900 text-sky-400 font-semibold flex items-center gap-2"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Panoyu Gönder (Uzağa Yapıştır)</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsClipboardMenuOpen(false);
+                          fetchRemoteClipboard();
+                        }}
+                        className="px-3 py-1.5 text-xs text-left hover:bg-slate-900 text-emerald-400 font-semibold flex items-center gap-2"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Panoyu Al (Uzaktan Kopyala)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="h-4 w-px bg-slate-800 mx-0.5"></div>
 
                 {/* MULTI-MONITOR SELECTOR */}
@@ -2370,7 +2452,7 @@ export default function App() {
                   />
                 </div>
 
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5 flex-wrap">
                   {['ALL', 'WORKGROUP'].map(grp => (
                     <button
                       key={grp}
@@ -2384,6 +2466,18 @@ export default function App() {
                       {grp}
                     </button>
                   ))}
+                  <button
+                    onClick={() => setShowOnlyAlerts(!showOnlyAlerts)}
+                    className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                      showOnlyAlerts
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="Yalnızca sistem alarmı veren sunucuları göster (CPU > 90%, RAM > 95%, Disk < 10GB, Çevrimdışı)"
+                  >
+                    <AlertTriangle className={`w-3.5 h-3.5 ${showOnlyAlerts ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
+                    <span>🚨 Alarmlı Sunucular</span>
+                  </button>
                 </div>
               </div>
 
@@ -2459,17 +2553,25 @@ export default function App() {
                         </div>
 
                         {/* Real-Time Status Badge */}
-                        {isOnline ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/40 flex items-center gap-1.5 shadow-[0_0_10px_rgba(52,211,153,0.2)]">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
-                            AÇIK {status?.latency ? `(${status.latency}ms)` : ''}
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-950/80 text-rose-400 border border-rose-800/40 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                            KAPALI
-                          </span>
-                        )}
+                        <div className="flex flex-col items-end gap-1">
+                          {isOnline ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/40 flex items-center gap-1.5 shadow-[0_0_10px_rgba(52,211,153,0.2)]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
+                              AÇIK {status?.latency ? `(${status.latency}ms)` : ''}
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-950/80 text-rose-400 border border-rose-800/40 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                              KAPALI
+                            </span>
+                          )}
+                          {telem?.alerts && telem.alerts.length > 0 && (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse">
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-400" />
+                              {telem.alerts.length} ALARM
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* LIVE SCREEN PREVIEW THUMBNAIL (16:9) */}
@@ -2655,6 +2757,24 @@ export default function App() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Active NOC Health Alerts */}
+                      {telem?.alerts && telem.alerts.length > 0 && (
+                        <div className="my-2 p-2 rounded-xl bg-rose-950/30 border border-rose-800/40 flex flex-wrap gap-1.5">
+                          {telem.alerts.map((al, aIdx) => (
+                            <span
+                              key={aIdx}
+                              className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-900/40 text-rose-300 border border-rose-700/50 flex items-center gap-1"
+                            >
+                              {al === 'ALERT_HIGH_CPU' && <>🔥 CPU &gt; 90%</>}
+                              {al === 'ALERT_LOW_DISK' && <>💾 Disk &lt; 10GB</>}
+                              {al === 'ALERT_HIGH_MEMORY' && <>⚡ RAM &gt; 95%</>}
+                              {al === 'ALERT_OFFLINE' && <>⚠️ Yanıtsız (&gt;45s)</>}
+                              {!['ALERT_HIGH_CPU', 'ALERT_LOW_DISK', 'ALERT_HIGH_MEMORY', 'ALERT_OFFLINE'].includes(al) && <>⚠️ {al}</>}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
                     </div>
 
@@ -4279,6 +4399,14 @@ export default function App() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Floating Clipboard Sync Toast */}
+      {clipboardToastText && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-slate-900/95 border border-sky-500/50 text-sky-300 text-xs font-semibold shadow-2xl flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2">
+          <Copy className="w-4 h-4 text-sky-400" />
+          <span>{clipboardToastText}</span>
         </div>
       )}
 

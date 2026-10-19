@@ -417,6 +417,63 @@ class TestAgentProtocol(unittest.TestCase):
             with open(curr_bin, 'r', encoding='utf-8') as f:
                 self.assertEqual(f.read(), "AGENT_VERSION_V1_STABLE")
 
+    def test_health_alert_evaluator_thresholds(self):
+        """Bölüm 4.2 NOC Sağlık Eşikleri (CPU>90% 3 periyot, Disk<10GB, RAM>95%) kural motorunu test eder."""
+        from telemetry import evaluate_health_alerts
+        import telemetry
+
+        # 1. Normal koşullar -> Sıfır alarm
+        telemetry._cpu_high_counter = 0
+        alerts = evaluate_health_alerts(cpu_pct=35.0, ram_pct=60.0, free_disk_gb=120.0)
+        self.assertEqual(alerts, [])
+
+        # 2. CPU %90 üstünde 1. ve 2. periyot -> Henüz alarm yok (3 periyot kuralı)
+        alerts1 = evaluate_health_alerts(cpu_pct=92.0, ram_pct=60.0, free_disk_gb=50.0)
+        self.assertEqual(alerts1, [])
+        alerts2 = evaluate_health_alerts(cpu_pct=95.0, ram_pct=60.0, free_disk_gb=50.0)
+        self.assertEqual(alerts2, [])
+
+        # 3. CPU %90 üstünde 3. periyot -> ALERT_HIGH_CPU tetiklenmeli
+        alerts3 = evaluate_health_alerts(cpu_pct=91.0, ram_pct=60.0, free_disk_gb=50.0)
+        self.assertIn('ALERT_HIGH_CPU', alerts3)
+
+        # 4. CPU normale döndüğünde sayaç sıfırlanmalı
+        alerts_reset = evaluate_health_alerts(cpu_pct=50.0, ram_pct=60.0, free_disk_gb=50.0)
+        self.assertNotIn('ALERT_HIGH_CPU', alerts_reset)
+        self.assertEqual(telemetry._cpu_high_counter, 0)
+
+        # 5. Düşük Disk (<10GB) ve Yüksek RAM (>95%) bağımsız tetiklenme
+        alerts_disk_ram = evaluate_health_alerts(cpu_pct=40.0, ram_pct=96.5, free_disk_gb=8.2)
+        self.assertIn('ALERT_LOW_DISK', alerts_disk_ram)
+        self.assertIn('ALERT_HIGH_MEMORY', alerts_disk_ram)
+        self.assertNotIn('ALERT_HIGH_CPU', alerts_disk_ram)
+
+    def test_clipboard_text_sanitization_and_bounds(self):
+        """Bölüm 5.3 Win32 Çift Yönlü Uzak Pano metin temizleme, sınır ve Unicode aktarımını test eder."""
+        from py_agent import set_clipboard_text, get_clipboard_text
+
+        # 1. Geçersiz girdi koruması
+        self.assertFalse(set_clipboard_text(None))
+        self.assertFalse(set_clipboard_text(12345))
+        self.assertFalse(set_clipboard_text(['array']))
+
+        # 2. Unicode metin yazma ve okuma testi (Türkçe karakter ve emoji desteği)
+        test_payload = "RemoteMM Kurumsal Pano Testi: ğüşıöç 🚀🔒"
+        res = set_clipboard_text(test_payload)
+        self.assertTrue(res)
+
+        # Panodan geri oku
+        read_back = get_clipboard_text()
+        self.assertEqual(read_back, test_payload)
+
+        # 3. 64KB sınır aşımı denetimi (uzun metin güvenliği)
+        long_text = "X" * 70000
+        res_long = set_clipboard_text(long_text)
+        self.assertTrue(res_long)
+        read_back_long = get_clipboard_text()
+        self.assertIsNotNone(read_back_long)
+        self.assertLessEqual(len(read_back_long), 65536)
+
 
 if __name__ == '__main__':
     unittest.main()

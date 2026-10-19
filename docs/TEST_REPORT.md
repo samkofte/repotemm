@@ -8,17 +8,17 @@
 
 ## 1. Çalıştırılan Komutlar ve Test Sonuçları
 
-### A. Python Protokol, Donanım Parmak İzi (HWID), E2E, Güvenlik Sınırları ve Auto-Rollback Testleri
+### A. Python Protokol, Donanım Parmak İzi (HWID), E2E, Güvenlik Sınırları, Sağlık Alarmları ve Pano Testleri
 * **Komut:** `python -m unittest discover -s tests -p "test_*.py"`
 * **Kapsanan Dosyalar:**
-  - `tests/test_agent_protocol.py` (18 test)
+  - `tests/test_agent_protocol.py` (20 test)
   - `tests/test_security_bounds.py` (5 test)
   - `tests/test_e2e_connection.py` (4 test)
-* **Toplam Python Test Sayısı:** 27
-* **Geçen:** 27
+* **Toplam Python Test Sayısı:** 29
+* **Geçen:** 29
 * **Başarısız:** 0
 * **Atlanan:** 0
-* **Süre:** 0.072s
+* **Süre:** 0.114s
 * **Detay:**
   1. `test_handshake_ack_structure` — HANDSHAKE_ACK zorunlu alanları ve MAC şeması doğrulama: **GEÇTİ**
   2. `test_screen_frame_packet` — SCREEN_FRAME veri paketi ve base64 görüntü bütünlüğü: **GEÇTİ**
@@ -38,26 +38,28 @@
   16. `test_rbac_permissions_matrix` — SUPER_ADMIN, NOC_OPERATOR, HELPDESK ve salt-okunur AUDITOR rol yetki matrisi: **GEÇTİ**
   17. `test_wix_msi_installer_definition` — WiX MSI XML (`Product.wxs`) ve PowerShell derleme betiğinin (`build-msi.ps1`) doğrulaması: **GEÇTİ**
   18. `test_auto_updater_hash_and_rollback_state_machine` — `agent/updater.py`: SHA-256 doğrulama, `.bak` yedekleme ve arıza durumunda otomatik Rollback durum makinesi: **GEÇTİ**
-  19. `test_path_traversal_forbidden_targets` — `tests/test_security_bounds.py`: SAM, SYSTEM ve drivers/etc dosyalarına dizin atlama engeli: **GEÇTİ**
-  20. `test_buffer_overflow_packet_limit` — 25MB üzeri aşırı paket yükü ve tampon taşması reddi: **GEÇTİ**
-  21. `test_kernel_critical_process_kill_protection` — Çekirdek süreçlerinin (`System`, `csrss`, `lsass`, `services`) sonlandırılmasının engellenmesi: **GEÇTİ**
-  22. `test_command_injection_whitelist_enforcement` — Parametrik komut izin listesi ve shell enjeksiyonu engelleme: **GEÇTİ**
-  23. `test_device_token_tampering_rejection` — Tahrif edilmiş cihaz token'larının (`tok_dev_`) reddedilmesi: **GEÇTİ**
-  24. `test_e2e_handshake_flow` — `tests/test_e2e_connection.py`: Canlı TCP el sıkışma ve HWID doğrulaması: **GEÇTİ**
-  25. `test_e2e_ping_pong_latency` — PING/PONG ile gidiş-dönüş ağ gecikmesi ölçümü: **GEÇTİ**
-  26. `test_e2e_stream_modes_switching` — PREVIEW (küçük resim) ve INTERACTIVE (ekran karesi) modları arası geçiş: **GEÇTİ**
-  27. `test_e2e_chat_broadcast` — Canlı operatör ve son kullanıcı sohbet mesajlaşma yayını: **GEÇTİ**
+  19. `test_health_alert_evaluator_thresholds` — `agent/telemetry.py`: Section 4.2 NOC Sağlık Eşikleri (CPU>90% 3 periyot, Disk<10GB, RAM>95%) ve sayaç sıfırlama kural motoru: **GEÇTİ**
+  20. `test_clipboard_text_sanitization_and_bounds` — `agent/py_agent.py`: Win32 Unicode `CF_UNICODETEXT` pano senkronizasyonu, 64KB sınır kesimi ve Türkçe karakter/emoji aktarımı: **GEÇTİ**
+  21. `test_path_traversal_forbidden_targets` — `tests/test_security_bounds.py`: SAM, SYSTEM ve drivers/etc dosyalarına dizin atlama engeli: **GEÇTİ**
+  22. `test_buffer_overflow_packet_limit` — 25MB üzeri aşırı paket yükü ve tampon taşması reddi: **GEÇTİ**
+  23. `test_kernel_critical_process_kill_protection` — Çekirdek süreçlerinin (`System`, `csrss`, `lsass`, `services`) sonlandırılmasının engellenmesi: **GEÇTİ**
+  24. `test_command_injection_whitelist_enforcement` — Parametrik komut izin listesi ve shell enjeksiyonu engelleme: **GEÇTİ**
+  25. `test_device_token_tampering_rejection` — Tahrif edilmiş cihaz token'larının (`tok_dev_`) reddedilmesi: **GEÇTİ**
+  26. `test_e2e_handshake_flow` — `tests/test_e2e_connection.py`: Canlı TCP el sıkışma ve HWID doğrulaması: **GEÇTİ**
+  27. `test_e2e_ping_pong_latency` — PING/PONG ile gidiş-dönüş ağ gecikmesi ölçümü: **GEÇTİ**
+  28. `test_e2e_stream_modes_switching` — PREVIEW (küçük resim) ve INTERACTIVE (ekran karesi) modları arası geçiş: **GEÇTİ**
+  29. `test_e2e_chat_broadcast` — Canlı operatör ve son kullanıcı sohbet mesajlaşma yayını: **GEÇTİ**
 
 ---
 
 ### B. Gateway, Merkezi Kayıt (Registry), Denetim İzi (Audit) ve RBAC Testleri
 * **Komut:** `node --test tests/test_gateway_state.mjs`
 * **Dosya:** `tests/test_gateway_state.mjs`
-* **Test Sayısı:** 7
-* **Geçen:** 7
+* **Test Sayısı:** 8
+* **Geçen:** 8
 * **Başarısız:** 0
 * **Atlanan:** 0
-* **Süre:** 139.7ms
+* **Süre:** 158.2ms
 * **Detay:**
   1. `Exponential Backoff Delay Calculation` — Ağ kopmalarında kademeli artan bekleme süresi hesabı (1s -> 1.5s -> 2.25s -> max 15s): **GEÇTİ**
   2. `Connection State Transition Machine` — Bağlantı durum geçişleri (disconnected -> connecting -> connected -> reconnecting -> error): **GEÇTİ**
@@ -65,17 +67,18 @@
   4. `DeviceRegistry: Registration, Lookup, and Telemetry` — Multi-tenant SQLite cihaz kaydı, HWID doğrulaması, bellek önbelleği ve anlık telemetri kaydı: **GEÇTİ**
   5. `AuditLogger: Parameter Sanitization and File Output` — ISO 27001 uyumlu dönen JSONL denetim günlüğü, parola/token/gizli anahtar maskeleme (`***REDACTED***`) ve UI için bellek tamponu sorgulama: **GEÇTİ**
   6. `AuditLogger: CSV and JSON Export for ISO 27001 / KVKK Compliance` — RFC 4180 uyumlu CSV ve filtrelenebilir JSON denetim izi dışa aktarımı: **GEÇTİ**
-  7. `RBAC: AUDITOR Action Filtering and Permission Matrix` — AUDITOR rolünde fare/klavye/dosya/güç komutlarının filtrelenerek PERMISSION_DENIED ile engellenmesi: **GEÇTİ**
+  7. `RBAC: AUDITOR Action Filtering and Permission Matrix` — AUDITOR rolünde fare/klavye/dosya/güç/pano (`CLIPBOARD_SET`) komutlarının filtrelenerek PERMISSION_DENIED ile engellenmesi: **GEÇTİ**
+  8. `DeviceRegistry: ALERT_OFFLINE Heartbeat Expiration (45s Inactivity)` — 45 saniye telemetri paketi göndermeyen uç noktaların otomatik ALERT_OFFLINE alarmına çekilmesi: **GEÇTİ**
 
 ---
 
 ### C. Arayüz Derleme ve Kod Bütünlüğü Doğrulaması
 * **Komut:** `npm run build`
-* **Sonuç:** Başarılı (`vite build`, 1783 modül hatasız paketlendi, 0 hata, 634ms)
+* **Sonuç:** Başarılı (`vite build`, 1783 modül hatasız paketlendi, 0 hata, 570ms)
 * **Paket Dağıtım Çıktısı:**
   - `dist/index.html` (0.47 kB)
-  - `dist/assets/index-CGInORV4.css` (81.82 kB)
-  - `dist/assets/index-BCG9TvqW.js` (341.31 kB)
+  - `dist/assets/index-BUYRMIYN.css` (83.05 kB)
+  - `dist/assets/index-B91SWbrc.js` (345.83 kB)
 
 ---
 
@@ -86,8 +89,11 @@
 4. **Aşama 4: Sistem Operasyonları & Güvenli Dosya/Servis Yönetimi:** SHA-256 dosya transfer doğrulaması, Windows servis listeleme ve kontrolü, ISO 27001 işlem mühürleme.
 5. **Aşama 5: Kurumsal Dağıtım & Ölçeklenebilirlik:** Ajan CLI bayrakları (`--install`, `--uninstall`), AD GPO (`deploy-gpo.ps1`), kurumsal batch ve Intune betikleri, Tab 6 Dağıtım Merkezi.
 6. **Aşama 6: Ticarileşme, KVKK / ISO 27001 Uyumluluğu, RBAC ve MSI:** Win32 30s kullanıcı rıza modalı (`REQUEST_CONSENT`), 4 seviyeli RBAC matrisi (AUDITOR salt-okunur koruması), RFC 4180 CSV/JSON dışa aktarma, WiX MSI dağıtım şablonu (`installer/Product.wxs`).
-7. **Bölüm 7.2 & 9: Auto-Rollback ve Kapsamlı Güvenlik/E2E Test Paketi:**
+7. **Aşama 7: Auto-Rollback Durum Makinesi ve Kapsamlı Güvenlik/E2E Test Paketi:**
    - `agent/updater.py`: SHA-256 hash doğrulama, `.bak` yedekleme, 30s sağlık kontrolü ve otomatik Rollback durum makinesi.
-   - `tests/test_security_bounds.py`: Path traversal, tampon taşması ve çekirdek süreç koruma testleri.
-   - `tests/test_e2e_connection.py`: Canlı TCP simülasyonu, el sıkışma, küçük resim ve sohbet döngüsü testleri.
-   - Toplam 34 otomatik test (%100 Başarı Oranı).
+   - `tests/test_security_bounds.py` ve `tests/test_e2e_connection.py` güvenlik ve TCP entegrasyonu.
+8. **Aşama 8: Winlogon & Secure Desktop Geçişi, NOC Sağlık Alarmları ve Çift Yönlü Uzak Pano:**
+   - Winlogon ve UAC ekran geçiş motoru (0.5s poll + BitBlt failover + DPI awareness).
+   - NOC Sağlık Eşikleri (CPU>90% 3 periyot, Disk<10GB, RAM>95%, 45s Timeout Offline) ve Fleet alarm rozetleri / filtreleme.
+   - Win32 Unicode uzak pano senkronizasyonu (`CF_UNICODETEXT`), 64KB sınır koruması, canlı konsol Pano açılır menüsü ve bildirim toast mesajları.
+   - Toplam 37 otomatik test (29 Python, 8 Node.js) — %100 Başarı Oranı.

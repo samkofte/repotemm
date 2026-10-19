@@ -134,8 +134,9 @@ flowchart LR
    - Şartname Bölüm 7.2 gereğince SHA-256 doğrulama, `.bak` yedeği ve arıza durumunda otomatik eski sürüme geri dönen `agent/updater.py` yazıldı.
    - `tests/test_security_bounds.py` ile SAM/SYSTEM traversal atakları, 25MB tampon taşması ve çekirdek süreç koruma filtreleri doğrulandı.
    - `tests/test_e2e_connection.py` ile gerçek TCP istemcisi üzerinden el sıkışma, akış modu değişimi (NOC thumbnail vs tam ekran) ve sohbet döngüsü test edildi.
-   - 27 Python ve 7 Node.js otomatik testi olmak üzere toplam 34 test %100 başarıyla tamamlandı.
 
-
-
-
+8. **Aşama 8: Winlogon & Secure Desktop Geçişi, NOC Sağlık Eşikleri ve Uzak Pano Senkronizasyonu (TAMAMLANDI)**
+   - **Winlogon & UAC Secure Desktop Geçişi (Bölüm 5.1 & 5.2):** `user32.SetProcessDPIAware()` ile yüksek DPI koordinat sapması engellendi. `OpenInputDesktop` / `SetThreadDesktop` sorgu periyodu 0.5s'ye indirilerek BitBlt arıza anında anında failover masaüstü geçişi sağlandı.
+   - **NOC Sağlık Eşikleri ve Otomatik Alarm Motoru (Bölüm 4.2):** CPU > %90 (3 periyot peş peşe `ALERT_HIGH_CPU`), Disk < 10GB (`ALERT_LOW_DISK`), RAM > %95 (`ALERT_HIGH_MEMORY`) ve 45 saniye sessizlik zaman aşımı (`ALERT_OFFLINE`) otomatik tespit edilerek filo kartlarında ve arama çubuğunda "🚨 Alarmlı Sunucular" filtresi ile gösterildi.
+   - **Çift Yönlü Uzak Pano Senkronizasyonu (Bölüm 5.3):** Win32 `OpenClipboard`, `GetClipboardData(CF_UNICODETEXT)` ve `GlobalAlloc(GMEM_MOVEABLE)` ile operatör ve hedef makine arasında Unicode ve emoji destekli, 64KB sınır kontrollü metin kopyalama/yapıştırma ve canlı konsol HUD menüsü tamamlandı.
+   - 29 Python ve 8 Node.js otomatik testi olmak üzere toplam 37 test %100 başarıyla tamamlandı.

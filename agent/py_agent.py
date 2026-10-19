@@ -60,6 +60,11 @@ wtsapi32 = ctypes.windll.wtsapi32
 user32   = ctypes.windll.user32
 gdi32    = ctypes.windll.gdi32
 
+try:
+    user32.SetProcessDPIAware()
+except Exception:
+    pass
+
 PORT       = 6129
 AGENT_PATH = os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__)
 
@@ -449,7 +454,7 @@ LAST_FRAME_B64 = [None]
 def check_and_switch_desktop():
     """Eger aktif input desktop (ekrandaki goruntu) thread'in desktop'indan farkliysa gecis yapar."""
     t_now = time.time()
-    if t_now - LAST_DESK_CHECK[0] < 2.0:
+    if t_now - LAST_DESK_CHECK[0] < 0.5:
         return False
     LAST_DESK_CHECK[0] = t_now
     try:
@@ -513,6 +518,8 @@ def capture_gdi(quality=78, monitor_index='ALL'):
         ok = gdi32.BitBlt(GDI_CACHE['hdc_mem'], 0, 0, w, h, hdc, src_x, src_y, 0x40CC0020)
         user32.ReleaseDC(0, hdc)
         if not ok:
+            switch_desktop()
+            reset_gdi_cache()
             return LAST_FRAME_B64[0]
 
         gdi32.GetDIBits(GDI_CACHE['hdc_mem'], GDI_CACHE['hbmp'], 0, h, GDI_CACHE['buf'], ctypes.byref(GDI_CACHE['bmi']), 0)
@@ -542,6 +549,79 @@ def capture_thumbnail(max_w=320, max_h=180, quality=40):
         return base64.b64encode(out.getvalue()).decode()
     except Exception:
         return None
+
+# ─── Remote Clipboard Sync Engine ───────────────────────────
+CF_UNICODETEXT = 13
+GMEM_MOVEABLE = 0x0002
+
+user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+user32.OpenClipboard.restype = ctypes.c_bool
+user32.CloseClipboard.argtypes = []
+user32.CloseClipboard.restype = ctypes.c_bool
+user32.GetClipboardData.argtypes = [ctypes.c_uint]
+user32.GetClipboardData.restype = ctypes.c_void_p
+user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+user32.SetClipboardData.restype = ctypes.c_void_p
+user32.EmptyClipboard.argtypes = []
+user32.EmptyClipboard.restype = ctypes.c_bool
+
+kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+kernel32.GlobalLock.restype = ctypes.c_void_p
+kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+kernel32.GlobalUnlock.restype = ctypes.c_bool
+kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+kernel32.GlobalAlloc.restype = ctypes.c_void_p
+
+def get_clipboard_text():
+    """Reads current Unicode text from Windows clipboard."""
+    try:
+        if not user32.OpenClipboard(None):
+            return None
+        hData = user32.GetClipboardData(CF_UNICODETEXT)
+        if not hData:
+            user32.CloseClipboard()
+            return None
+        pText = kernel32.GlobalLock(hData)
+        if not pText:
+            user32.CloseClipboard()
+            return None
+        text = ctypes.c_wchar_p(pText).value
+        kernel32.GlobalUnlock(hData)
+        user32.CloseClipboard()
+        return text
+    except Exception:
+        try: user32.CloseClipboard()
+        except: pass
+        return None
+
+def set_clipboard_text(text):
+    """Sets Unicode text into Windows clipboard safely."""
+    if not isinstance(text, str):
+        return False
+    if len(text) > 65536:
+        text = text[:65536]
+    try:
+        if not user32.OpenClipboard(None):
+            return False
+        user32.EmptyClipboard()
+        encoded = (text + '\0').encode('utf-16le')
+        hMem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
+        if not hMem:
+            user32.CloseClipboard()
+            return False
+        pMem = kernel32.GlobalLock(hMem)
+        if not pMem:
+            user32.CloseClipboard()
+            return False
+        ctypes.memmove(pMem, encoded, len(encoded))
+        kernel32.GlobalUnlock(hMem)
+        user32.SetClipboardData(CF_UNICODETEXT, hMem)
+        user32.CloseClipboard()
+        return True
+    except Exception:
+        try: user32.CloseClipboard()
+        except: pass
+        return False
 
 # ─── Input ───────────────────────────────────────────────────
 
@@ -1344,6 +1424,8 @@ def handle_client(conn, addr):
     selected_monitor = ['ALL']
     stream_mode = ['INTERACTIVE']
     last_telemetry_time = [0.0]
+    last_clipboard_check = [0.0]
+    last_clipboard_val = ['']
     client_alive = [True]
 
     def stream():
@@ -1357,6 +1439,17 @@ def handle_client(conn, addr):
                     try:
                         telem = collect_full_telemetry()
                         send_json_safe(conn, {'type': 'TELEMETRY_UPDATE', 'data': telem})
+                    except Exception:
+                        pass
+
+                # 2 saniyede bir yerel pano degisimini denetle ve ilet
+                if now - last_clipboard_check[0] >= 2.0:
+                    last_clipboard_check[0] = now
+                    try:
+                        clip_val = get_clipboard_text()
+                        if clip_val and clip_val != last_clipboard_val[0]:
+                            last_clipboard_val[0] = clip_val
+                            send_json_safe(conn, {'type': 'CLIPBOARD_SYNC', 'text': clip_val})
                     except Exception:
                         pass
 
@@ -1468,6 +1561,15 @@ def handle_client(conn, addr):
                     except: pass
                 elif t=='PING':
                     send_json_safe(conn, {'type':'PONG','timestamp':int(time.time()*1000)})
+                elif t=='CLIPBOARD_SET':
+                    txt = cmd.get('text', '')
+                    set_ok = set_clipboard_text(txt)
+                    if set_ok:
+                        last_clipboard_val[0] = txt
+                    send_json_safe(conn, {'type': 'CLIPBOARD_ACK', 'success': set_ok})
+                elif t=='CLIPBOARD_GET':
+                    cur_txt = get_clipboard_text()
+                    send_json_safe(conn, {'type': 'CLIPBOARD_CONTENT', 'text': cur_txt or ''})
                 elif t=='POWER_ACTION':
                     enable_shutdown_privilege()
                     a = cmd.get('action','')

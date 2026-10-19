@@ -27,7 +27,7 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 const DB_PATH = path.join(DATA_DIR, 'remotemm_enterprise.db');
 
-class DeviceRegistry {
+export class DeviceRegistry {
   constructor() {
     this.devices = new Map();
     this.tenants = new Map();
@@ -226,6 +226,7 @@ class DeviceRegistry {
       activeUser: telemetry.activeUser || dev.telemetry?.activeUser || 'User',
       isLocked: Boolean(telemetry.isLocked),
       uptimeSec: telemetry.uptimeSec || 0,
+      alerts: telemetry.alerts || [],
       timestamp: Date.now()
     };
 
@@ -247,7 +248,17 @@ class DeviceRegistry {
   }
 
   getAllDevices(tenantId = null) {
+    const now = Date.now();
     const list = Array.from(this.devices.values());
+    for (const d of list) {
+      if (d.lastSeen && (now - d.lastSeen > 45000)) {
+        if (!d.telemetry) d.telemetry = {};
+        if (!d.telemetry.alerts) d.telemetry.alerts = [];
+        if (!d.telemetry.alerts.includes('ALERT_OFFLINE')) {
+          d.telemetry.alerts.push('ALERT_OFFLINE');
+        }
+      }
+    }
     if (tenantId) {
       return list.filter(d => d.tenantId === tenantId);
     }

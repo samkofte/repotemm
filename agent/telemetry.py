@@ -125,6 +125,32 @@ def is_workstation_locked():
     user32.CloseDesktop(hdesk)
     return False
 
+_cpu_high_counter = 0
+
+def evaluate_health_alerts(cpu_pct, ram_pct, free_disk_gb):
+    """
+    Evaluates enterprise health thresholds according to Engineering Bible Section 4.2:
+    - CPU > 90% (3 consecutive samples) -> ALERT_HIGH_CPU
+    - Free Disk < 10 GB -> ALERT_LOW_DISK
+    - RAM Usage > 95% -> ALERT_HIGH_MEMORY
+    """
+    global _cpu_high_counter
+    alerts = []
+    if cpu_pct >= 90.0:
+        _cpu_high_counter += 1
+        if _cpu_high_counter >= 3:
+            alerts.append('ALERT_HIGH_CPU')
+    else:
+        _cpu_high_counter = 0
+
+    if free_disk_gb < 10.0:
+        alerts.append('ALERT_LOW_DISK')
+
+    if ram_pct >= 95.0:
+        alerts.append('ALERT_HIGH_MEMORY')
+
+    return alerts
+
 def collect_full_telemetry():
     """Gathers unified telemetry snapshot for NOC Dashboard."""
     total_ram, used_ram, free_ram, ram_pct = get_memory_info()
@@ -132,6 +158,7 @@ def collect_full_telemetry():
     free_disk = get_disk_free_gb('C:\\')
     uptime = get_uptime_sec()
     locked = is_workstation_locked()
+    alerts = evaluate_health_alerts(cpu_pct, ram_pct, free_disk)
 
     try:
         active_user = os.getlogin()
@@ -148,6 +175,7 @@ def collect_full_telemetry():
         'uptimeSec': uptime,
         'isLocked': locked,
         'activeUser': active_user,
+        'alerts': alerts,
         'timestamp': int(time.time() * 1000)
     }
 

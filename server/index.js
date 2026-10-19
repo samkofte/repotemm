@@ -48,6 +48,21 @@ app.get('/api/audit/logs', (req, res) => {
   res.json({ success: true, logs: auditLogger.getRecentLogs(limit, tenantId) });
 });
 
+// Compliance & Audit Logs: Export full logs in CSV or JSON for ISO 27001 / KVKK audits
+app.get('/api/audit/export', (req, res) => {
+  const format = req.query.format === 'csv' ? 'csv' : 'json';
+  const tenantId = req.query.tenantId || null;
+  const content = auditLogger.exportLogs(format, tenantId);
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="remotemm_audit_export.csv"');
+    return res.send(content);
+  }
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="remotemm_audit_export.json"');
+  res.send(content);
+});
+
 // Wake-on-LAN (WoL) Paketi Gonder
 app.post('/api/power/wol', async (req, res) => {
   const { mac, ip, broadcastIp } = req.body;
@@ -385,8 +400,10 @@ wss.on('connection', (ws, req) => {
   const password = params.get('password') || '';
   const targetMac = params.get('mac') || '';
   const forceReinstall = params.get('force') === 'true' || params.get('reinstall') === 'true';
+  const operatorRole = (params.get('role') || 'SUPER_ADMIN').toUpperCase();
+  const requireConsent = params.get('consent') === 'true';
 
-  console.log(`[Gateway] Initiating session to ${targetHost}:${targetPort} (mac: ${targetMac || 'auto'}, forceReinstall: ${forceReinstall})...`);
+  console.log(`[Gateway] Initiating session to ${targetHost}:${targetPort} (operator: ${username}, role: ${operatorRole}, consent: ${requireConsent})...`);
 
   let isConnected = false;
   let isCancelled = false;
@@ -494,7 +511,25 @@ wss.on('connection', (ws, req) => {
                 targetHost,
                 action: 'SESSION_CONNECTED',
                 operator: username,
-                parameters: { agentVersion: remoteVer, hostname: parsed.hostname }
+                parameters: { agentVersion: remoteVer, hostname: parsed.hostname, role: operatorRole }
+              });
+
+              if (requireConsent) {
+                tcpClient.write(JSON.stringify({
+                  type: 'REQUEST_CONSENT',
+                  operator: username,
+                  timeout: 30
+                }) + '\n');
+                sendProgressToConsole(ws, 'Kullanıcıdan uzaktan erişim onayı bekleniyor (30 sn)...');
+              }
+            } else if (line.includes('"CONSENT_RESPONSE"')) {
+              const parsed = JSON.parse(line);
+              auditLogger.log({
+                targetHost,
+                operator: username,
+                action: parsed.approved ? 'USER_CONSENT_APPROVED' : 'USER_CONSENT_REJECTED',
+                parameters: { reason: parsed.reason, operator: parsed.operator },
+                result: parsed.approved ? 'SUCCESS' : 'REJECTED'
               });
             } else if (line.includes('"DEVICE_HEARTBEAT"')) {
               const parsed = JSON.parse(line);
@@ -585,11 +620,46 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (message) => {
     if (isConnected && tcpClient.writable && !isCancelled) {
       const msgStr = message.toString();
-      tcpClient.write(msgStr + '\n');
 
       try {
         if (msgStr.charCodeAt(0) === 123) {
           const cmd = JSON.parse(msgStr);
+
+          // RBAC Denetimi: AUDITOR rolü yalnızca salt-okunur (View-Only) erişim hakkına sahiptir
+          const AUDITOR_FORBIDDEN = new Set([
+            'MOUSE_INPUT', 'KEY_INPUT', 'BLACKOUT_SCREEN', 'LOCK_INPUT',
+            'FS_UPLOAD', 'FS_DELETE', 'FS_EXEC', 'FS_MKDIR',
+            'KILL_PROCESS', 'SERVICE_ACTION', 'POWER_ACTION', 'AGENT_UPGRADE'
+          ]);
+
+          if (operatorRole === 'AUDITOR' && AUDITOR_FORBIDDEN.has(cmd.type)) {
+            ws.send(JSON.stringify({
+              type: 'PERMISSION_DENIED',
+              action: cmd.type,
+              role: operatorRole,
+              message: 'AUDITOR rolü için bu işlem yetkilendirilmemiştir (Salt-Okunur Denetçi).'
+            }));
+            auditLogger.log({
+              targetHost,
+              operator: username,
+              action: 'UNAUTHORIZED_ACCESS_BLOCKED',
+              parameters: { attemptedAction: cmd.type, role: operatorRole },
+              result: 'DENIED'
+            });
+            return;
+          }
+
+          // RBAC Denetimi: HELPDESK rolü kritik kapatma eylemlerini çalıştıramaz
+          if (operatorRole === 'HELPDESK' && cmd.type === 'POWER_ACTION' && cmd.action === 'shutdown') {
+            ws.send(JSON.stringify({
+              type: 'PERMISSION_DENIED',
+              action: 'POWER_ACTION_SHUTDOWN',
+              role: operatorRole,
+              message: 'HELPDESK rolü bilgisayarı tamamen kapatma (shutdown) yetkisine sahip değildir.'
+            }));
+            return;
+          }
+
           if (cmd.type === 'FS_EXEC') {
             auditLogger.log({
               targetHost,
@@ -625,9 +695,18 @@ wss.on('connection', (ws, req) => {
               action: `SERVICE_${(cmd.action || '').toUpperCase()}`,
               parameters: { serviceName: cmd.serviceName }
             });
+          } else if (cmd.type === 'REQUEST_CONSENT') {
+            auditLogger.log({
+              targetHost,
+              operator: username,
+              action: 'USER_CONSENT_REQUESTED',
+              parameters: { timeout: cmd.timeout || 30 }
+            });
           }
         }
       } catch (e) {}
+
+      tcpClient.write(msgStr + '\n');
     }
   });
 

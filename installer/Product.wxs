@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <!-- RemoteMM Enterprise Agent MSI Definition -->
+    <Product Id="*"
+             Name="RemoteMM Enterprise Agent"
+             Language="1033"
+             Version="12.2.0.0"
+             Manufacturer="RemoteMM Enterprise Inc."
+             UpgradeCode="9A5B3746-857D-4F71-A2A6-D95370C15792">
+
+        <Package InstallerVersion="500"
+                 Compressed="yes"
+                 InstallScope="perMachine"
+                 Description="RemoteMM Enterprise Endpoint Remote Control &amp; NOC Monitoring Agent"
+                 Comments="Silent MSI installer supporting GPO, Intune, and SCCM enterprise rollouts" />
+
+        <MajorUpgrade DowngradeErrorMessage="Daha yeni bir RemoteMM Agent sürümü zaten yüklü." />
+        <MediaTemplate EmbedCab="yes" />
+
+        <!-- Standart Kurulum Özellikleri (Komut Satırından Geçirilebilir) -->
+        <Property Id="SERVER_URL" Value="http://localhost:3001" />
+        <Property Id="TENANT_ID" Value="default" />
+        <Property Id="ENROLL_TOKEN" Value="tok_enterprise_auto_enroll" />
+        <Property Id="REQUIRE_CONSENT" Value="0" />
+
+        <!-- Klasör Yapısı: C:\Program Files\RemoteMM\Agent -->
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLDIR" Name="RemoteMM">
+                    <Directory Id="AgentDir" Name="Agent">
+                        <Component Id="C_AgentBinary" Guid="C19F2012-6804-4FBE-B341-ED6753C0DF21">
+                            <File Id="F_PyAgent"
+                                  Source="$(var.AgentSourceDir)\py_agent.py"
+                                  KeyPath="yes" />
+                        </Component>
+                        <Component Id="C_IdentityModule" Guid="E6132D9A-2C36-47A1-807B-8A7E004312DC">
+                            <File Id="F_IdentityPy"
+                                  Source="$(var.AgentSourceDir)\identity.py"
+                                  KeyPath="yes" />
+                        </Component>
+                        <Component Id="C_TelemetryModule" Guid="870F4D3C-4C98-4B17-A1C8-C3DF91A25F88">
+                            <File Id="F_TelemetryPy"
+                                  Source="$(var.AgentSourceDir)\telemetry.py"
+                                  KeyPath="yes" />
+                        </Component>
+                        <Component Id="C_DisplayModule" Guid="53AC1B89-F802-4A77-9E45-8B90251785A1">
+                            <File Id="F_DisplayPy"
+                                  Source="$(var.AgentSourceDir)\display.py"
+                                  KeyPath="yes" />
+                        </Component>
+                        <!-- Windows Servis Tanımı: RemoteMMAgent -->
+                        <Component Id="C_ServiceDefinition" Guid="3E96DA21-4F90-4A91-8D6F-1B234907159C">
+                            <ServiceInstall Id="ServiceInstaller"
+                                            Type="ownProcess"
+                                            Vital="yes"
+                                            Name="RemoteMMAgent"
+                                            DisplayName="RemoteMM Enterprise Agent"
+                                            Description="RemoteMM Enterprise NOC &amp; Helpdesk Remote Control Service"
+                                            Start="auto"
+                                            Account="LocalSystem"
+                                            ErrorControl="normal"
+                                            Interactive="no">
+                                <ServiceConfig OnInstall="yes"
+                                               OnReinstall="yes"
+                                               ResetPeriodInDays="1"
+                                               RestartServiceDelayInSeconds="5" />
+                            </ServiceInstall>
+                            <ServiceControl Id="ServiceControl"
+                                            Name="RemoteMMAgent"
+                                            Start="install"
+                                            Stop="both"
+                                            Remove="uninstall"
+                                            Wait="yes" />
+                        </Component>
+                    </Directory>
+                </Directory>
+            </Directory>
+
+            <!-- Veri ve Yapılandırma Klasörü: C:\ProgramData\RemoteMM -->
+            <Directory Id="CommonAppDataFolder">
+                <Directory Id="DataDir" Name="RemoteMM">
+                    <Component Id="C_ConfigDir" Guid="A7822941-DF41-45CC-94A1-25D2305888BF">
+                        <CreateFolder />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <!-- Özellikler Ağacı -->
+        <Feature Id="MainApplication" Title="RemoteMM Enterprise Agent" Level="1">
+            <ComponentRef Id="C_AgentBinary" />
+            <ComponentRef Id="C_IdentityModule" />
+            <ComponentRef Id="C_TelemetryModule" />
+            <ComponentRef Id="C_DisplayModule" />
+            <ComponentRef Id="C_ServiceDefinition" />
+            <ComponentRef Id="C_ConfigDir" />
+        </Feature>
+    </Product>
+</Wix>

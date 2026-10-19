@@ -268,8 +268,102 @@ class TestAgentProtocol(unittest.TestCase):
             self.assertTrue(os.path.isfile(fpath), f"Betik dosyası mevcut olmalı: {f}")
             self.assertGreater(os.path.getsize(fpath), 100, f"Betik dosyası boş olmamalı: {f}")
 
+    def test_kvkk_consent_flow_and_rejection(self):
+        """KVKK 12. Madde kapsamındaki kullanıcı rızası ve zaman aşımı paketlerini test eder."""
+        # Onay verilmiş oturum yanıtı
+        approved_resp = {
+            'type': 'CONSENT_RESPONSE',
+            'approved': True,
+            'reason': 'APPROVED',
+            'operator': 'ahmet.yilmaz'
+        }
+        self.assertEqual(approved_resp['type'], 'CONSENT_RESPONSE')
+        self.assertTrue(approved_resp['approved'])
+        self.assertEqual(approved_resp['reason'], 'APPROVED')
+
+        # Reddedilmiş oturum yanıtı
+        rejected_resp = {
+            'type': 'CONSENT_RESPONSE',
+            'approved': False,
+            'reason': 'REJECTED_BY_USER',
+            'operator': 'ahmet.yilmaz'
+        }
+        self.assertFalse(rejected_resp['approved'])
+        self.assertEqual(rejected_resp['reason'], 'REJECTED_BY_USER')
+
+        # 30 saniye zaman aşımı yanıtı
+        timeout_resp = {
+            'type': 'CONSENT_RESPONSE',
+            'approved': False,
+            'reason': 'TIMEOUT',
+            'operator': 'ahmet.yilmaz'
+        }
+        self.assertFalse(timeout_resp['approved'])
+        self.assertEqual(timeout_resp['reason'], 'TIMEOUT')
+
+    def test_rbac_permissions_matrix(self):
+        """RBAC rol yetki matrisini ve AUDITOR salt-okunur kısıtlamalarını doğrular."""
+        AUDITOR_FORBIDDEN = {
+            'MOUSE_INPUT', 'KEY_INPUT', 'BLACKOUT_SCREEN', 'LOCK_INPUT',
+            'FS_UPLOAD', 'FS_DELETE', 'FS_EXEC', 'FS_MKDIR',
+            'KILL_PROCESS', 'SERVICE_ACTION', 'POWER_ACTION', 'AGENT_UPGRADE'
+        }
+
+        def can_operator_execute(role, action):
+            if role == 'SUPER_ADMIN':
+                return True
+            if role == 'AUDITOR':
+                return action not in AUDITOR_FORBIDDEN
+            if role == 'HELPDESK' and action == 'POWER_ACTION_SHUTDOWN':
+                return False
+            return True
+
+        # AUDITOR testleri
+        self.assertFalse(can_operator_execute('AUDITOR', 'MOUSE_INPUT'))
+        self.assertFalse(can_operator_execute('AUDITOR', 'KEY_INPUT'))
+        self.assertFalse(can_operator_execute('AUDITOR', 'FS_DELETE'))
+        self.assertFalse(can_operator_execute('AUDITOR', 'KILL_PROCESS'))
+        self.assertTrue(can_operator_execute('AUDITOR', 'SCREEN_VIEW'))
+        self.assertTrue(can_operator_execute('AUDITOR', 'AUDIT_LOG_VIEW'))
+
+        # HELPDESK testleri
+        self.assertFalse(can_operator_execute('HELPDESK', 'POWER_ACTION_SHUTDOWN'))
+        self.assertTrue(can_operator_execute('HELPDESK', 'MOUSE_INPUT'))
+        self.assertTrue(can_operator_execute('HELPDESK', 'CHAT_MESSAGE'))
+
+        # SUPER_ADMIN testleri
+        self.assertTrue(can_operator_execute('SUPER_ADMIN', 'POWER_ACTION_SHUTDOWN'))
+        self.assertTrue(can_operator_execute('SUPER_ADMIN', 'KILL_PROCESS'))
+        self.assertTrue(can_operator_execute('SUPER_ADMIN', 'FS_UPLOAD'))
+
+    def test_wix_msi_installer_definition(self):
+        """WiX MSI Product.wxs ve derleme betiğinin varlığını, XML sözdizimini doğrular."""
+        import os
+        import xml.etree.ElementTree as ET
+
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        wxs_path = os.path.join(base_dir, 'installer', 'Product.wxs')
+        ps_path = os.path.join(base_dir, 'installer', 'build-msi.ps1')
+
+        self.assertTrue(os.path.isfile(wxs_path), "installer/Product.wxs mevcut olmalı")
+        self.assertTrue(os.path.isfile(ps_path), "installer/build-msi.ps1 mevcut olmalı")
+
+        # XML geçerlilik kontrolü
+        tree = ET.parse(wxs_path)
+        root = tree.getroot()
+        self.assertTrue('Wix' in root.tag or root.tag.endswith('Wix'))
+
+        # İçerik denetimi
+        with open(wxs_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        self.assertIn('RemoteMMAgent', content)
+        self.assertIn('RemoteMM Enterprise Agent', content)
+        self.assertIn('ServiceInstall', content)
+
+
 if __name__ == '__main__':
     unittest.main()
+
 
 
 

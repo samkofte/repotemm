@@ -128,7 +128,22 @@ class AuditLogger {
       return [];
     }
   }
-}
 
+  /**
+   * Exports audit trail formatted for compliance review (CSV or JSON).
+   */
+  exportLogs(format = 'json', tenantId = null) {
+    const logs = this.getRecentLogs(2000, tenantId);
+    if (format === 'csv') {
+      const headers = ['eventId', 'timestamp', 'tenantId', 'operator', 'operatorIp', 'targetHost', 'action', 'parameters', 'result'];
+      const rows = logs.map(l => {
+        const pStr = JSON.stringify(l.parameters || {}).replace(/"/g, '""');
+        return `"${l.eventId}","${l.timestamp}","${l.tenantId}","${l.operator}","${l.operatorIp}","${l.targetHost || ''}","${l.action}","${pStr}","${l.result}"`;
+      });
+      return [headers.join(','), ...rows].join('\r\n');
+    }
+    return JSON.stringify(logs, null, 2);
+  }
+}
 
 export const auditLogger = new AuditLogger();

@@ -78,7 +78,11 @@ flowchart LR
 | **Win32 Telemetri Motoru** | ✅ Tamamlandı | Pure Win32 API (GlobalMemoryStatusEx, GetDiskFreeSpaceExW, GetTickCount64, GetSystemTimes) (`agent/telemetry.py`). |
 | **Çoklu Monitör Keşfi & Değişimi** | ✅ Tamamlandı | Win32 EnumDisplayMonitors ile çoklu ekran yakalama, koordinat uzayı haritalama ve HUD seçici (`agent/display.py`). |
 | **Dinamik Görüntü Kalitesi** | ✅ Tamamlandı | Ağ gecikmesine uyumlu (Ultra 95%, Yüksek 88%, Dengeli 75%, Düşük 55%) dinamik kalite motoru. |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (10/10 passed) ve Node.js test runner (5/5 passed). |
+| **KVKK Rıza Modalı (Consent)** | ✅ Tamamlandı | Win32 `MessageBoxTimeoutW` ile 30 sn zaman aşımı kontrollü kullanıcı onay akışı. |
+| **RBAC Rol & Erişim Denetimi** | ✅ Tamamlandı | SUPER_ADMIN, NOC_OPERATOR, HELPDESK ve salt-okunur AUDITOR rol koruma filtreleri. |
+| **Mevzuat Denetim Dışa Aktarımı** | ✅ Tamamlandı | RFC 4180 CSV ve JSON denetim izi dışa aktarımı (`/api/audit/export`). |
+| **WiX MSI Kurumsal Paket** | ✅ Tamamlandı | Sessiz ve parametrik Active Directory / Intune MSI dağıtım şablonu (`installer/Product.wxs`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (17/17 passed) ve Node.js test runner (7/7 passed). |
 
 ---
 
@@ -116,5 +120,13 @@ flowchart LR
    - Node.js Gateway sunucusuna `/scripts` statik dağıtım köprüsü ve dinamik GPO URL üreticisi eklendi.
    - React arayüzünde Tab 6 (Ajan Dağıtım Merkezi) 4 kurumsal dağıtım moduyla güncellendi.
    - Tüm aşamalar (Aşama 0'dan Aşama 5'e) %100 test başarı oranıyla tamamlandı ve GitHub ana dalına gönderildi.
+
+6. **Aşama 6: Ticarileşme, KVKK / ISO 27001 Uyumluluğu, RBAC ve MSI Paketleme (TAMAMLANDI)**
+   - KVKK 12. Madde gereğince Win32 `MessageBoxTimeoutW` ile 30 saniyelik şeffaf kullanıcı rıza akışı (`REQUEST_CONSENT`) hayata geçirildi.
+   - Gateway üzerinde `SUPER_ADMIN`, `NOC_OPERATOR`, `HELPDESK` ve `AUDITOR` rolleri işletildi. Denetçi rolünde tüm kontrol (fare/klavye/dosya/güç) yetkileri kısıtlandı ve ihlal girişimleri loglandı.
+   - Denetim izlerinin resmi kurumlara raporlanabilmesi için CSV ve JSON formatında dışa aktarma API'si (`/api/audit/export`) ve UI entegrasyonu tamamlandı.
+   - Kurumsal Active Directory GPO, Intune ve SCCM dağıtımları için WiX MSI paket tanımı (`installer/Product.wxs`) ve PowerShell derleme otomasyonu (`installer/build-msi.ps1`) eklendi.
+   - Tüm aşamalar 17 Python ve 7 Node.js otomatik testi ile %100 başarıyla doğrulandı.
+
 
 

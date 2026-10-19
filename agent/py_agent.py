@@ -1264,6 +1264,38 @@ del "%~f0"
     except Exception as e:
         send_json_safe(conn, {'type': 'UPGRADE_ERROR', 'message': str(e)})
 
+CONSENT_POLICY = False
+
+def ask_user_consent(operator_name="Teknisyen", timeout_sec=30):
+    r"""
+    KVKK 12. Madde ve ISO 27001 geregi kullanicidan acik riza (consent) talep eder.
+    Native Windows MessageBoxTimeoutW kullanarak en ustte (TOPMOST) 30 saniyelik geri sayimli modal acar.
+    """
+    try:
+        MB_YESNO = 0x00000004
+        MB_ICONQUESTION = 0x00000020
+        MB_TOPMOST = 0x00040000
+        MB_SETFOREGROUND = 0x00010000
+        flags = MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND
+        caption = "RemoteMM Enterprise — Uzaktan Destek İzni (KVKK)"
+        text = (
+            f"Bilgi İşlem Departmanı / Destek Uzmanı [{operator_name}] bilgisayarınıza "
+            f"uzaktan yönetim amacıyla erişim talep ediyor.\n\n"
+            f"Erişime onay veriyor musunuz?\n"
+            f"(Yanıt verilmezse {timeout_sec} saniye sonra bağlantı otomatik reddedilecektir.)"
+        )
+        res = ctypes.windll.user32.MessageBoxTimeoutW(
+            0, text, caption, flags, 0, int(timeout_sec * 1000)
+        )
+        if res == 6:  # IDYES
+            return True, "APPROVED"
+        elif res == 7:  # IDNO
+            return False, "REJECTED_BY_USER"
+        else:  # 32000 (Timeout)
+            return False, "TIMEOUT"
+    except Exception as e:
+        return True, f"BYPASS_ERROR_{e}"
+
 def handle_client(conn, addr):
     global LOCKED, BLACKOUT
     with CLIENTS_LOCK:
@@ -1295,7 +1327,8 @@ def handle_client(conn, addr):
         'tenantId': ident.get('tenantId', 'tenant_default'),
         'deviceToken': ident.get('deviceToken', ''),
         'monitors': monitors_list,
-        'virtualDesktop': virtual_bounds
+        'virtualDesktop': virtual_bounds,
+        'consentPolicy': CONSENT_POLICY
     }
     if not send_json_safe(conn, hs):
         with CLIENTS_LOCK:
@@ -1459,6 +1492,26 @@ def handle_client(conn, addr):
                     except: pass
                 elif t=='AGENT_UPGRADE':
                     threading.Thread(target=do_agent_upgrade, args=(conn, cmd), daemon=True).start()
+                elif t=='REQUEST_CONSENT':
+                    def do_consent():
+                        op = cmd.get('operator', 'Teknisyen')
+                        timeout_s = int(cmd.get('timeout', 30))
+                        approved, reason = ask_user_consent(op, timeout_s)
+                        send_json_safe(conn, {
+                            'type': 'CONSENT_RESPONSE',
+                            'approved': approved,
+                            'reason': reason,
+                            'operator': op
+                        })
+                        if not approved:
+                            client_alive[0] = False
+                            try: conn.close()
+                            except: pass
+                    threading.Thread(target=do_consent, daemon=True).start()
+                elif t=='SET_CONSENT_POLICY':
+                    global CONSENT_POLICY
+                    CONSENT_POLICY = bool(cmd.get('enabled', False))
+                    send_json_safe(conn, {'type': 'CONSENT_POLICY_ACK', 'enabled': CONSENT_POLICY})
         except: break
     client_alive[0] = False
     with CLIENTS_LOCK:

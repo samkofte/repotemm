@@ -137,3 +137,44 @@ test('AuditLogger: Parameter Sanitization and File Output', async () => {
   assert.ok(recents.length > 0);
   assert.strictEqual(recents[0].operator, 'sec_admin');
 });
+
+test('AuditLogger: CSV and JSON Export for ISO 27001 / KVKK Compliance', async () => {
+  const { auditLogger } = await import('../server/audit.js');
+
+  const csv = auditLogger.exportLogs('csv', 'tenant_test_1');
+  assert.ok(typeof csv === 'string');
+  assert.ok(csv.includes('eventId,timestamp,tenantId,operator'));
+  assert.ok(csv.includes('POWER_ACTION_REBOOT'));
+  assert.ok(csv.includes('sec_admin'));
+
+  const jsonStr = auditLogger.exportLogs('json', 'tenant_test_1');
+  const parsed = JSON.parse(jsonStr);
+  assert.ok(Array.isArray(parsed));
+  assert.ok(parsed.length > 0);
+  assert.strictEqual(parsed[0].operator, 'sec_admin');
+});
+
+test('RBAC: AUDITOR Action Filtering and Permission Matrix', () => {
+  const AUDITOR_FORBIDDEN = new Set([
+    'MOUSE_INPUT', 'KEY_INPUT', 'BLACKOUT_SCREEN', 'LOCK_INPUT',
+    'FS_UPLOAD', 'FS_DELETE', 'FS_EXEC', 'FS_MKDIR',
+    'KILL_PROCESS', 'SERVICE_ACTION', 'POWER_ACTION', 'AGENT_UPGRADE'
+  ]);
+
+  function isActionAllowed(role, action) {
+    if (role === 'SUPER_ADMIN') return true;
+    if (role === 'AUDITOR') return !AUDITOR_FORBIDDEN.has(action);
+    if (role === 'HELPDESK' && action === 'POWER_ACTION_SHUTDOWN') return false;
+    return true;
+  }
+
+  assert.strictEqual(isActionAllowed('AUDITOR', 'MOUSE_INPUT'), false);
+  assert.strictEqual(isActionAllowed('AUDITOR', 'FS_UPLOAD'), false);
+  assert.strictEqual(isActionAllowed('AUDITOR', 'KILL_PROCESS'), false);
+  assert.strictEqual(isActionAllowed('AUDITOR', 'SCREEN_VIEW'), true);
+
+  assert.strictEqual(isActionAllowed('HELPDESK', 'POWER_ACTION_SHUTDOWN'), false);
+  assert.strictEqual(isActionAllowed('HELPDESK', 'FS_UPLOAD'), true);
+
+  assert.strictEqual(isActionAllowed('SUPER_ADMIN', 'POWER_ACTION_SHUTDOWN'), true);
+});

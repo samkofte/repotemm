@@ -6,7 +6,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=['tkinter', 'tkinter.scrolledtext', 'PIL', 'identity', 'telemetry'],
+    hiddenimports=['tkinter', 'tkinter.scrolledtext', 'PIL', 'identity', 'telemetry', 'display'],
+
 
     hookspath=[],
     hooksconfig={},

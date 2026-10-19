@@ -155,7 +155,57 @@ class TestAgentProtocol(unittest.TestCase):
         self.assertIn('isLocked', snapshot)
         self.assertIsInstance(snapshot['isLocked'], bool)
 
+    def test_multi_monitor_discovery_and_coordinate_mapping(self):
+        """agent.display modülünün monitör keşfi ve koordinat dönüşümlerini doğrular."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        from agent.display import (
+            enumerate_monitors,
+            get_virtual_desktop_bounds,
+            get_target_capture_rect,
+            map_normalized_to_screen_coords
+        )
+
+        monitors = enumerate_monitors()
+        self.assertIsInstance(monitors, list)
+        self.assertGreater(len(monitors), 0)
+
+        first = monitors[0]
+        self.assertIn('width', first)
+        self.assertIn('height', first)
+        self.assertIn('left', first)
+        self.assertIn('top', first)
+        self.assertIn('isPrimary', first)
+        self.assertGreater(first['width'], 0)
+        self.assertGreater(first['height'], 0)
+
+        vb = get_virtual_desktop_bounds()
+        self.assertGreater(vb['width'], 0)
+        self.assertGreater(vb['height'], 0)
+
+        # Sanal masaüstü yakalama dikdörtgeni testi
+        rect_all = get_target_capture_rect('ALL')
+        self.assertEqual(rect_all[2], vb['width'])
+        self.assertEqual(rect_all[3], vb['height'])
+
+        # İlk monitör yakalama dikdörtgeni testi
+        rect_m0 = get_target_capture_rect(0)
+        self.assertEqual(rect_m0[2], first['width'])
+        self.assertEqual(rect_m0[3], first['height'])
+
+        # Koordinat haritalama testi (Sol üst 0.0, 0.0 -> left, top)
+        px, py = map_normalized_to_screen_coords(0.0, 0.0, 0)
+        self.assertEqual(px, first['left'])
+        self.assertEqual(py, first['top'])
+
+        # Koordinat haritalama testi (Sağ alt 1.0, 1.0 -> right, bottom)
+        px1, py1 = map_normalized_to_screen_coords(1.0, 1.0, 0)
+        self.assertEqual(px1, first['right'])
+        self.assertEqual(py1, first['bottom'])
+
 if __name__ == '__main__':
     unittest.main()
+
 
 

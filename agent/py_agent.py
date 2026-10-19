@@ -31,6 +31,27 @@ except Exception:
     def collect_full_telemetry():
         return {'cpuPercent': 0.0, 'usedRamMb': 0, 'totalRamMb': 0, 'freeDiskGb': 0.0, 'uptimeSec': 0}
 
+try:
+    from display import enumerate_monitors, get_virtual_desktop_bounds, get_target_capture_rect, map_normalized_to_screen_coords
+except Exception:
+    def enumerate_monitors():
+        w = user32.GetSystemMetrics(0) or 1920
+        h = user32.GetSystemMetrics(1) or 1080
+        return [{'index': 0, 'name': f'Monitör 1 ({w}x{h})', 'width': w, 'height': h, 'left': 0, 'top': 0, 'isPrimary': True}]
+    def get_virtual_desktop_bounds():
+        w = user32.GetSystemMetrics(0) or 1920
+        h = user32.GetSystemMetrics(1) or 1080
+        return {'left': 0, 'top': 0, 'width': w, 'height': h}
+    def get_target_capture_rect(m='ALL'):
+        w = user32.GetSystemMetrics(0) or 1920
+        h = user32.GetSystemMetrics(1) or 1080
+        return 0, 0, w, h
+    def map_normalized_to_screen_coords(x, y, m='ALL'):
+        w = user32.GetSystemMetrics(0) or 1920
+        h = user32.GetSystemMetrics(1) or 1080
+        return int(float(x) * w), int(float(y) * h)
+
+
 
 kernel32 = ctypes.windll.kernel32
 userenv  = ctypes.windll.userenv
@@ -458,13 +479,13 @@ def reset_gdi_cache():
     GDI_CACHE['buf'] = None
     GDI_CACHE['bmi'] = None
 
-def capture_gdi(quality=78):
+def capture_gdi(quality=78, monitor_index='ALL'):
     try:
         if check_and_switch_desktop():
             reset_gdi_cache()
 
         from PIL import Image
-        w, h = get_scr()
+        src_x, src_y, w, h = get_target_capture_rect(monitor_index)
         hdc = user32.GetDC(0)
         if not hdc:
             switch_desktop()
@@ -488,11 +509,9 @@ def capture_gdi(quality=78):
             GDI_CACHE['bmi'] = bmi
 
         # 0x40CC0020 = SRCCOPY (0x00CC0020) | CAPTUREBLT (0x40000000)
-        # CAPTUREBLT sayesinde DWM/DirectX/video ve seffaf katman pencereleri siyah olmadan yakalanir
-        ok = gdi32.BitBlt(GDI_CACHE['hdc_mem'], 0, 0, w, h, hdc, 0, 0, 0x40CC0020)
+        ok = gdi32.BitBlt(GDI_CACHE['hdc_mem'], 0, 0, w, h, hdc, src_x, src_y, 0x40CC0020)
         user32.ReleaseDC(0, hdc)
         if not ok:
-            # Video veya DWM pencere gecisinde BitBlt teklemesinde onceki kareyi koru
             return LAST_FRAME_B64[0]
 
         gdi32.GetDIBits(GDI_CACHE['hdc_mem'], GDI_CACHE['hbmp'], 0, h, GDI_CACHE['buf'], ctypes.byref(GDI_CACHE['bmi']), 0)
@@ -505,6 +524,7 @@ def capture_gdi(quality=78):
         return frame_b64
     except Exception as e:
         return LAST_FRAME_B64[0]
+
 
 def capture_thumbnail(max_w=320, max_h=180, quality=40):
     """NOC paneli grid onizlemesi icin dusuk cozunurluklu, hafif kare yakalar."""
@@ -680,34 +700,47 @@ def ks(vk, flags=0):
         user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(INP))
     except: pass
 
-def do_mouse(cmd):
+def do_mouse(cmd, active_monitor='ALL'):
     try:
-        x=float(cmd.get('xPercent',0)); y=float(cmd.get('yPercent',0))
-        act=cmd.get('action',''); btn=cmd.get('button','left'); dlt=int(cmd.get('delta',0))
-        ax=int(x*65535); ay=int(y*65535)
-        w, h = get_scr()
+        x = float(cmd.get('xPercent', 0))
+        y = float(cmd.get('yPercent', 0))
+        act = cmd.get('action', '')
+        btn = cmd.get('button', 'left')
+        dlt = int(cmd.get('delta', 0))
+
+        # Multi-monitor coordinate transformation
+        px, py = map_normalized_to_screen_coords(x, y, active_monitor)
         user32.SetMessageExtraInfo(MAGIC_REMOTE_TAG)
-        user32.SetCursorPos(int(x * w), int(y * h))
-        ms(MOUSEEVENTF_MOVE|MOUSEEVENTF_ABSOLUTE, ax, ay)
-        if   act=='mousedown':
-            if btn=='right': ms(MOUSEEVENTF_RIGHTDOWN)
-            elif btn=='middle': ms(MOUSEEVENTF_MIDDLEDOWN)
+        user32.SetCursorPos(px, py)
+
+        vb = get_virtual_desktop_bounds()
+        vw = max(1, vb['width'])
+        vh = max(1, vb['height'])
+        ax = int(((px - vb['left']) / vw) * 65535)
+        ay = int(((py - vb['top']) / vh) * 65535)
+
+        # MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK (0x4000)
+        ms(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | 0x4000, ax, ay)
+        if   act == 'mousedown':
+            if btn == 'right': ms(MOUSEEVENTF_RIGHTDOWN)
+            elif btn == 'middle': ms(MOUSEEVENTF_MIDDLEDOWN)
             else: ms(MOUSEEVENTF_LEFTDOWN)
-        elif act=='mouseup':
-            if btn=='right': ms(MOUSEEVENTF_RIGHTUP)
-            elif btn=='middle': ms(MOUSEEVENTF_MIDDLEUP)
+        elif act == 'mouseup':
+            if btn == 'right': ms(MOUSEEVENTF_RIGHTUP)
+            elif btn == 'middle': ms(MOUSEEVENTF_MIDDLEUP)
             else: ms(MOUSEEVENTF_LEFTUP)
-        elif act=='click':
-            if btn=='right': ms(MOUSEEVENTF_RIGHTDOWN); ms(MOUSEEVENTF_RIGHTUP)
-            elif btn=='middle': ms(MOUSEEVENTF_MIDDLEDOWN); ms(MOUSEEVENTF_MIDDLEUP)
+        elif act == 'click':
+            if btn == 'right': ms(MOUSEEVENTF_RIGHTDOWN); ms(MOUSEEVENTF_RIGHTUP)
+            elif btn == 'middle': ms(MOUSEEVENTF_MIDDLEDOWN); ms(MOUSEEVENTF_MIDDLEUP)
             else: ms(MOUSEEVENTF_LEFTDOWN); ms(MOUSEEVENTF_LEFTUP)
-        elif act=='dblclick':
+        elif act == 'dblclick':
             ms(MOUSEEVENTF_LEFTDOWN); ms(MOUSEEVENTF_LEFTUP)
             time.sleep(0.05)
             ms(MOUSEEVENTF_LEFTDOWN); ms(MOUSEEVENTF_LEFTUP)
-        elif act=='scroll':
-            ms(MOUSEEVENTF_WHEEL, data=dlt*120)
+        elif act == 'scroll':
+            ms(MOUSEEVENTF_WHEEL, data=dlt * 120)
     except: pass
+
 
 def do_key(cmd):
     # Remote admin input is NOT blocked by LOCKED (BlockInput blocks physical local user only)
@@ -1199,18 +1232,22 @@ def handle_client(conn, addr):
         mac_str = ''
     w, h = get_scr()
     ident = load_or_create_identity()
+    monitors_list = enumerate_monitors()
+    virtual_bounds = get_virtual_desktop_bounds()
     hs = {
         'type': 'HANDSHAKE_ACK',
         'agentVersion': AGENT_VERSION,
         'hostname': hostname,
         'user': uname,
         'macAddress': mac_str,
-        'screenWidth': w,
-        'screenHeight': h,
+        'screenWidth': virtual_bounds['width'],
+        'screenHeight': virtual_bounds['height'],
         'os': 'Windows',
         'hwid': ident.get('hwid', ''),
         'tenantId': ident.get('tenantId', 'tenant_default'),
-        'deviceToken': ident.get('deviceToken', '')
+        'deviceToken': ident.get('deviceToken', ''),
+        'monitors': monitors_list,
+        'virtualDesktop': virtual_bounds
     }
     if not send_json_safe(conn, hs):
         with CLIENTS_LOCK:
@@ -1223,6 +1260,7 @@ def handle_client(conn, addr):
 
     quality = [88]
     fps = [0.016]
+    selected_monitor = ['ALL']
     stream_mode = ['INTERACTIVE']
     last_telemetry_time = [0.0]
     client_alive = [True]
@@ -1254,16 +1292,17 @@ def handle_client(conn, addr):
                     continue
 
                 t0 = time.time()
-                frame = capture_gdi(quality[0])
+                frame = capture_gdi(quality[0], monitor_index=selected_monitor[0])
                 if frame:
-                    w2, h2 = get_scr()
+                    cur_rect = get_target_capture_rect(selected_monitor[0])
                     send_json_safe(conn, {
                         'type': 'SCREEN_FRAME',
                         'frame': frame,
                         'timestamp': int(t0 * 1000),
-                        'width': w2,
-                        'height': h2,
-                        'blackedOut': BLACKOUT
+                        'width': cur_rect[2],
+                        'height': cur_rect[3],
+                        'blackedOut': BLACKOUT,
+                        'monitor': selected_monitor[0]
                     })
                 elapsed = time.time() - t0
                 target_delay = fps[0] if fps[0] > 0 else 0.016
@@ -1286,8 +1325,18 @@ def handle_client(conn, addr):
                 try: cmd = json.loads(line)
                 except: continue
                 t = cmd.get('type','')
-                if   t=='MOUSE_INPUT':    do_mouse(cmd)
+                if   t=='MOUSE_INPUT':    do_mouse(cmd, selected_monitor[0])
                 elif t=='KEYBOARD_INPUT': do_key(cmd)
+                elif t=='SELECT_MONITOR':
+                    selected_monitor[0] = cmd.get('monitorIndex', 'ALL')
+                    reset_gdi_cache()
+                elif t=='GET_MONITORS':
+                    send_json_safe(conn, {
+                        'type': 'MONITOR_LIST',
+                        'monitors': enumerate_monitors(),
+                        'virtualDesktop': get_virtual_desktop_bounds()
+                    })
+
                 elif t=='LOCK_INPUT':
                     LOCKED = bool(cmd.get('locked',False))
                 elif t=='BLACKOUT_SCREEN':

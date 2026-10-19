@@ -76,7 +76,9 @@ flowchart LR
 | **Merkezi Cihaz Veritabanı (Registry)** | ✅ Tamamlandı | SQLite + yüksek performanslı bellek önbelleği, multi-tenant cihaz kaydı (`server/registry.js`). |
 | **Denetim İzi & Uyumluluk (Audit Log)** | ✅ Tamamlandı | Dönen JSONL kütüğü, hassas parola/token süzgeci ve UI Denetim İzi tablosu (`server/audit.js`). |
 | **Win32 Telemetri Motoru** | ✅ Tamamlandı | Pure Win32 API (GlobalMemoryStatusEx, GetDiskFreeSpaceExW, GetTickCount64, GetSystemTimes) (`agent/telemetry.py`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (9/9 passed) ve Node.js test runner (5/5 passed). |
+| **Çoklu Monitör Keşfi & Değişimi** | ✅ Tamamlandı | Win32 EnumDisplayMonitors ile çoklu ekran yakalama, koordinat uzayı haritalama ve HUD seçici (`agent/display.py`). |
+| **Dinamik Görüntü Kalitesi** | ✅ Tamamlandı | Ağ gecikmesine uyumlu (Ultra 95%, Yüksek 88%, Dengeli 75%, Düşük 55%) dinamik kalite motoru. |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (10/10 passed) ve Node.js test runner (5/5 passed). |
 
 ---
 
@@ -93,4 +95,11 @@ flowchart LR
    - Ağ trafiğini korumak amacıyla büyük filolara yönelik düşük frekanslı `capture_thumbnail` ve `SET_STREAM_MODE` eklendi.
    - Gateway WebSocket proxy'sine `TELEMETRY_UPDATE` ve `NOC_THUMBNAIL` paket yönlendirmesi eklendi.
    - React Sunucular (Fleet) Grid kartlarına anlık CPU %, kullanılan/toplam RAM, boş disk alanı ve kilit durumu göstergeleri bağlandı.
+
+3. **Aşama 3: Gelişmiş Çoklu Monitör & Dinamik Görüntü Kalitesi**
+   - Win32 API ile çoklu monitör donanım keşif motoru (`agent/display.py`) geliştirildi.
+   - Teknisyenin tüm ekranları (sanal masaüstü) veya hedef tekil monitörü seçebilmesi sağlandı (`SELECT_MONITOR`).
+   - `MOUSEEVENTF_VIRTUALDESK` desteğiyle fare koordinat uzayının seçili monitöre piksel piksel doğru eşlenmesi sağlandı.
+   - HUD kontrol çubuğuna Monitör Seçici ve Dinamik Yayın Kalitesi seçicisi yerleştirildi.
+
 

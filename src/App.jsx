@@ -39,10 +39,13 @@ export default function App() {
   const [fps, setFps] = useState(30);
   const [latency, setLatency] = useState(14);
   const [scaleMode, setScaleMode] = useState('fit');
+  const [monitors, setMonitors] = useState([]);
+  const [selectedMonitorIndex, setSelectedMonitorIndex] = useState('ALL');
   const [activeMonitor, setActiveMonitor] = useState('Primary Screen');
   const [streamQuality, setStreamQuality] = useState(80);
   const [targetFps, setTargetFps] = useState(30);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
+
 
   // Toolbar Actions State
   const [isInputLocked, setIsInputLocked] = useState(false);
@@ -343,6 +346,17 @@ export default function App() {
     }
   };
 
+  const changeMonitor = (monitorIdx) => {
+    setSelectedMonitorIndex(monitorIdx);
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'SELECT_MONITOR',
+        monitorIndex: monitorIdx
+      }));
+    }
+  };
+
+
   // SINGLE ACTIVE CONNECTION ENFORCER
   const handleConnect = (hostObj = null, options = {}) => {
     isCancelledRef.current = false;
@@ -424,8 +438,12 @@ export default function App() {
           setSessionState('connected');
           reconnectCountRef.current = 0;
           setAgentInfo(data);
+          if (data.monitors && Array.isArray(data.monitors)) {
+            setMonitors(data.monitors);
+          }
           setDeployStatus(null);
           setConnectionError(null);
+
           setIsScreenBlackedOut(false);
           setIsInputLocked(false);
           if (data.macAddress) {
@@ -518,8 +536,17 @@ export default function App() {
           if (data.processes && data.processes.length > 0) {
             setProcesses(data.processes);
           }
+        } else if (data.type === 'PONG') {
+          if (data.timestamp) {
+            setLatency(Math.max(1, Date.now() - data.timestamp));
+          }
+        } else if (data.type === 'MONITOR_LIST') {
+          if (data.monitors && Array.isArray(data.monitors)) {
+            setMonitors(data.monitors);
+          }
         }
       } catch (e) {
+
         console.warn('[RemoteMM] ws message parse error:', e);
       }
     };
@@ -1612,15 +1639,54 @@ export default function App() {
 
                 <div className="h-4 w-px bg-slate-800 mx-0.5"></div>
 
+                {/* MULTI-MONITOR SELECTOR */}
+                {monitors.length > 0 && (
+                  <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-xl border border-cyan-500/30 text-[10px] font-mono shadow-[0_0_10px_rgba(56,189,248,0.1)]">
+                    <Monitor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <select
+                      value={selectedMonitorIndex}
+                      onChange={(e) => changeMonitor(e.target.value)}
+                      className="bg-transparent text-cyan-300 font-bold outline-none cursor-pointer"
+                      title="Monitör Seç (Tüm Ekranlar veya Belirli Bir Monitör)"
+                    >
+                      <option value="ALL" className="bg-slate-900 text-slate-200">
+                        Tüm Ekranlar ({monitors.length} Monitör)
+                      </option>
+                      {monitors.map((m) => (
+                        <option key={m.index} value={m.index} className="bg-slate-900 text-slate-200">
+                          {m.name || `Monitör ${m.index + 1} (${m.width}x${m.height})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* STREAM QUALITY SELECTOR */}
+                <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-xl border border-slate-800 text-[10px] font-mono">
+                  <span className="text-slate-400">Kalite:</span>
+                  <select
+                    value={streamQuality}
+                    onChange={(e) => changeStreamQuality(Number(e.target.value))}
+                    className="bg-transparent text-indigo-300 font-bold outline-none cursor-pointer"
+                    title="Yayın Kalitesi"
+                  >
+                    <option value={95} className="bg-slate-900 text-slate-200">Ultra (95%)</option>
+                    <option value={88} className="bg-slate-900 text-slate-200">Yüksek (88%)</option>
+                    <option value={75} className="bg-slate-900 text-slate-200">Dengeli (75%)</option>
+                    <option value={55} className="bg-slate-900 text-slate-200">Hızlı / Düşük Ağ (55%)</option>
+                  </select>
+                </div>
+
+                <div className="h-4 w-px bg-slate-800 mx-0.5"></div>
+
                 {/* AUTO MAX FPS & ULTRA HD LIVE STATUS BADGE */}
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-950 border border-emerald-500/30 text-[10px] font-mono shadow-[0_0_10px_rgba(16,185,129,0.1)]">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
                   <span className="text-emerald-400 font-bold">{fps} FPS</span>
                   <span className="text-slate-600">•</span>
                   <span className="text-cyan-400 font-semibold">{latency}ms</span>
-                  <span className="text-slate-600">•</span>
-                  <span className="text-indigo-400 font-bold">OTO MAX (HD)</span>
                 </div>
+
 
                 <div className="h-4 w-px bg-slate-800 mx-0.5"></div>
 

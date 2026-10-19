@@ -82,7 +82,10 @@ flowchart LR
 | **RBAC Rol & Erişim Denetimi** | ✅ Tamamlandı | SUPER_ADMIN, NOC_OPERATOR, HELPDESK ve salt-okunur AUDITOR rol koruma filtreleri. |
 | **Mevzuat Denetim Dışa Aktarımı** | ✅ Tamamlandı | RFC 4180 CSV ve JSON denetim izi dışa aktarımı (`/api/audit/export`). |
 | **WiX MSI Kurumsal Paket** | ✅ Tamamlandı | Sessiz ve parametrik Active Directory / Intune MSI dağıtım şablonu (`installer/Product.wxs`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (17/17 passed) ve Node.js test runner (7/7 passed). |
+| **Auto-Rollback State Machine** | ✅ Tamamlandı | SHA-256 hash doğrulaması, `.bak` yedeği ve arıza durumunda otomatik geri alma (`agent/updater.py`). |
+| **Sıfır-Güven (Zero-Trust) Sınırları** | ✅ Tamamlandı | Path traversal, 25MB tampon taşması ve çekirdek süreç koruma filtreleri. |
+| **Uçtan Uca (E2E) TCP Entegrasyonu** | ✅ Tamamlandı | Canlı TCP el sıkışma, dinamik stream geçişleri, PING/PONG gecikme ve sohbet döngüsü. |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (27/27 passed) ve Node.js test runner (7/7 passed) — Toplam 34 test %100 Başarılı. |
 
 ---
 
@@ -126,7 +129,13 @@ flowchart LR
    - Gateway üzerinde `SUPER_ADMIN`, `NOC_OPERATOR`, `HELPDESK` ve `AUDITOR` rolleri işletildi. Denetçi rolünde tüm kontrol (fare/klavye/dosya/güç) yetkileri kısıtlandı ve ihlal girişimleri loglandı.
    - Denetim izlerinin resmi kurumlara raporlanabilmesi için CSV ve JSON formatında dışa aktarma API'si (`/api/audit/export`) ve UI entegrasyonu tamamlandı.
    - Kurumsal Active Directory GPO, Intune ve SCCM dağıtımları için WiX MSI paket tanımı (`installer/Product.wxs`) ve PowerShell derleme otomasyonu (`installer/build-msi.ps1`) eklendi.
-   - Tüm aşamalar 17 Python ve 7 Node.js otomatik testi ile %100 başarıyla doğrulandı.
+
+7. **Aşama 7: Auto-Rollback Durum Makinesi, Güvenlik Sınırları ve E2E Test Paketi (TAMAMLANDI)**
+   - Şartname Bölüm 7.2 gereğince SHA-256 doğrulama, `.bak` yedeği ve arıza durumunda otomatik eski sürüme geri dönen `agent/updater.py` yazıldı.
+   - `tests/test_security_bounds.py` ile SAM/SYSTEM traversal atakları, 25MB tampon taşması ve çekirdek süreç koruma filtreleri doğrulandı.
+   - `tests/test_e2e_connection.py` ile gerçek TCP istemcisi üzerinden el sıkışma, akış modu değişimi (NOC thumbnail vs tam ekran) ve sohbet döngüsü test edildi.
+   - 27 Python ve 7 Node.js otomatik testi olmak üzere toplam 34 test %100 başarıyla tamamlandı.
+
 
 
 

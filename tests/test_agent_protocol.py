@@ -1,6 +1,11 @@
 import unittest
 import json
 import time
+import os
+import sys
+
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(BASE_DIR, 'agent'))
 
 class TestAgentProtocol(unittest.TestCase):
     """
@@ -360,9 +365,62 @@ class TestAgentProtocol(unittest.TestCase):
         self.assertIn('RemoteMM Enterprise Agent', content)
         self.assertIn('ServiceInstall', content)
 
+    def test_auto_updater_hash_and_rollback_state_machine(self):
+        """Bölüm 7.2 AutoUpdater SHA-256 doğrulama, geçici hazırlama ve geri alma (Rollback) durum makinesini test eder."""
+        import tempfile
+        import hashlib
+        from updater import AutoUpdater
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            curr_bin = os.path.join(tmpdir, "RemoteMM_Agent.exe")
+            with open(curr_bin, 'w', encoding='utf-8') as f:
+                f.write("AGENT_VERSION_V1_STABLE")
+
+            updater = AutoUpdater(curr_bin)
+
+            # 1. Bozuk dosya / Hash uyuşmazlığı testi
+            corrupt_new = os.path.join(tmpdir, "corrupt_download.exe")
+            with open(corrupt_new, 'w', encoding='utf-8') as f:
+                f.write("MALICIOUS_PAYLOAD")
+
+            fake_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+            staged, reason = updater.stage_update(corrupt_new, fake_hash)
+            self.assertFalse(staged)
+            self.assertEqual(reason, "HASH_VERIFICATION_FAILED")
+            self.assertFalse(os.path.exists(corrupt_new), "Bozuk dosya imha edilmiş olmalı")
+
+            # 2. Geçerli dosya hazırlama ve uygulama testi
+            valid_new = os.path.join(tmpdir, "valid_v2.exe")
+            v2_content = "AGENT_VERSION_V2_PROD"
+            with open(valid_new, 'w', encoding='utf-8') as f:
+                f.write(v2_content)
+
+            correct_hash = hashlib.sha256(v2_content.encode('utf-8')).hexdigest()
+            staged_ok, msg = updater.stage_update(valid_new, correct_hash)
+            self.assertTrue(staged_ok)
+
+            applied, apply_msg = updater.apply_update_with_backup()
+            self.assertTrue(applied)
+            self.assertEqual(apply_msg, "APPLIED_PENDING_HEALTHCHECK")
+            self.assertTrue(os.path.isfile(updater.backup_binary))
+
+            # Yeni sürümün geçerli olduğunu doğrula
+            with open(curr_bin, 'r', encoding='utf-8') as f:
+                self.assertEqual(f.read(), v2_content)
+
+            # 3. Sağlık denetimi başarısız -> Otomatik Rollback testi
+            committed, status_msg = updater.complete_update_verification(is_healthy=False)
+            self.assertFalse(committed)
+            self.assertEqual(status_msg, "HEALTH_FAILED_ROLLBACK_SUCCESSFUL")
+
+            # Eski sürüme geri dönülmüş olmalı
+            with open(curr_bin, 'r', encoding='utf-8') as f:
+                self.assertEqual(f.read(), "AGENT_VERSION_V1_STABLE")
+
 
 if __name__ == '__main__':
     unittest.main()
+
 
 
 

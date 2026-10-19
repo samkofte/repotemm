@@ -138,6 +138,17 @@ def load_or_create_identity(tenant_id="tenant_default", enroll_token=""):
 
     return identity
 
+def verify_device_token(hwid, device_token):
+    """Verifies that a device token matches the active device identity and HWID format."""
+    if not hwid or not device_token:
+        return False
+    if not isinstance(device_token, str) or not device_token.startswith('tok_dev_'):
+        return False
+    ident = load_or_create_identity()
+    if ident.get('hwid') != hwid:
+        return False
+    return ident.get('deviceToken') == device_token
+
 if __name__ == '__main__':
     ident = load_or_create_identity()
     print("RemoteMM Hardware Identity:")

@@ -6,7 +6,7 @@ import {
   X, Check, AlertTriangle, Send, Activity, User, HardDrive, Plus, Zap,
   Edit3, AlertCircle, Unlock, EyeOff, Copy, Globe, Layers, Sliders,
   Radio, Maximize2, Minimize2, Filter, ArrowRight, Clock, Moon,
-  Mic, MicOff, Volume2, Bell, Sparkles
+  Mic, MicOff, Volume2, Bell, Sparkles, Square, RotateCcw, CheckCircle2
 } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'dameware_saved_hosts_v1';
@@ -196,13 +196,17 @@ export default function App() {
   const [fileSearch, setFileSearch] = useState('');
   const fileInputRef = useRef(null);
 
-  // Processes State
+  // Processes & Services State
   const [processes, setProcesses] = useState([
     { Id: 1024, ProcessName: 'RemoteMM_Agent.exe', CPU: '1.2%', WorkingSet64: 34500000, User: 'SYSTEM' },
     { Id: 408, ProcessName: 'svchost.exe', CPU: '0.4%', WorkingSet64: 82100000, User: 'SYSTEM' },
     { Id: 2190, ProcessName: 'explorer.exe', CPU: '2.8%', WorkingSet64: 114200000, User: 'makine1' },
     { Id: 3400, ProcessName: 'taskmgr.exe', CPU: '0.9%', WorkingSet64: 28900000, User: 'makine1' }
   ]);
+  const [systemSubTab, setSystemSubTab] = useState('processes'); // 'processes' | 'services'
+  const [services, setServices] = useState([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState('');
 
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -519,7 +523,7 @@ export default function App() {
             alert('Dosya indirilemedi: ' + err.message);
           }
         } else if (data.type === 'FS_UPLOAD_RES') {
-          alert('Dosya uzak makineye başarıyla yüklendi!');
+          alert(`Dosya başarıyla yüklendi!\nSHA-256 Bütünlük Doğrulandı: ${data.sha256 ? data.sha256.substring(0, 16) + '...' : 'OK'}\nBoyut: ${data.size ? (data.size / 1024).toFixed(1) + ' KB' : ''}`);
           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             socketRef.current.send(JSON.stringify({ type: 'FS_LIST', path: data.path ? data.path.substring(0, data.path.lastIndexOf('\\')) || 'C:\\' : 'C:\\' }));
           }
@@ -536,6 +540,19 @@ export default function App() {
           if (data.processes && data.processes.length > 0) {
             setProcesses(data.processes);
           }
+        } else if (data.type === 'SERVICE_LIST_RES') {
+          setIsLoadingServices(false);
+          if (data.services && Array.isArray(data.services)) {
+            setServices(data.services);
+          }
+        } else if (data.type === 'SERVICE_ACTION_RES') {
+          // Servis işlemi başarılı! Listeyi güncelle
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ type: 'SERVICE_LIST' }));
+          }
+        } else if (data.type === 'SERVICE_ERROR') {
+          setIsLoadingServices(false);
+          alert('Windows Servis Hatası: ' + data.message);
         } else if (data.type === 'PONG') {
           if (data.timestamp) {
             setLatency(Math.max(1, Date.now() - data.timestamp));
@@ -852,6 +869,24 @@ export default function App() {
         type: 'KILL_PROCESS',
         pid: processId
       }));
+    }
+  };
+
+  const handleServiceAction = (serviceName, action) => {
+    if (!confirm(`"${serviceName}" servisi üzerinde '${action.toUpperCase()}' işlemini uygulamak istiyor musunuz?`)) return;
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'SERVICE_ACTION',
+        serviceName,
+        action
+      }));
+    }
+  };
+
+  const refreshServices = () => {
+    setIsLoadingServices(true);
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: 'SERVICE_LIST' }));
     }
   };
 
@@ -1176,26 +1211,39 @@ export default function App() {
     }
   };
 
-  const handleUploadFile = (e) => {
+  const handleUploadFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) {
       alert('Dosya boyutu en fazla 25MB olabilir.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64Data = reader.result.split(',')[1];
-      const fullPath = remotePath.endsWith('\\') ? `${remotePath}${file.name}` : `${remotePath}\\${file.name}`;
-      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-        socketRef.current.send(JSON.stringify({
-          type: 'FS_UPLOAD',
-          path: fullPath,
-          data: base64Data
-        }));
+    try {
+      let fileSha256 = '';
+      if (window.crypto && window.crypto.subtle) {
+        const buffer = await file.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        fileSha256 = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       }
-    };
-    reader.readAsDataURL(file);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Data = reader.result.split(',')[1];
+        const fullPath = remotePath.endsWith('\\') ? `${remotePath}${file.name}` : `${remotePath}\\${file.name}`;
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+          socketRef.current.send(JSON.stringify({
+            type: 'FS_UPLOAD',
+            path: fullPath,
+            data: base64Data,
+            sha256: fileSha256
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Upload error:', err);
+    }
     e.target.value = '';
   };
 
@@ -1257,10 +1305,24 @@ export default function App() {
       if (activeTab === 'files') {
         requestFsList(remotePath || 'C:\\');
       } else if (activeTab === 'processes') {
-        socketRef.current.send(JSON.stringify({ type: 'TASK_LIST' }));
+        if (systemSubTab === 'processes') {
+          socketRef.current.send(JSON.stringify({ type: 'TASK_LIST' }));
+        } else {
+          refreshServices();
+        }
       }
     }
   }, [activeTab, isConnected]);
+
+  useEffect(() => {
+    if (activeTab === 'processes' && isConnected && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      if (systemSubTab === 'processes') {
+        socketRef.current.send(JSON.stringify({ type: 'TASK_LIST' }));
+      } else {
+        refreshServices();
+      }
+    }
+  }, [systemSubTab]);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#060911] text-slate-100 select-none overflow-hidden font-sans">
@@ -2754,16 +2816,16 @@ export default function App() {
         )}
 
         {/* =========================================================================
-            TAB 3: PROCESSES & POWER HUB
+            TAB 3: PROCESSES & WINDOWS SERVICES MANAGEMENT HUB
         ========================================================================= */}
         {activeTab === 'processes' && (
           <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-grid-pattern">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-5">
               <div>
                 <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                  <Cpu className="w-5 h-5 text-indigo-400" /> Uzak Süreçler & Güç Yöneticisi
+                  <Cpu className="w-5 h-5 text-indigo-400" /> Uzak Sistem, Süreç & Servis Yöneticisi
                 </h2>
-                <p className="text-xs text-slate-400">Hedef makinedeki aktif Windows süreçleri ve sistem güç seçenekleri</p>
+                <p className="text-xs text-slate-400">Hedef makinedeki aktif Windows süreçleri, arka plan servisleri ve güç yönetimi</p>
               </div>
 
               {/* POWER ACTIONS BAR */}
@@ -2789,42 +2851,192 @@ export default function App() {
               </div>
             </div>
 
-            {/* PROCESSES TABLE */}
-            <div className="glass-card rounded-2xl overflow-hidden border border-slate-800">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800 font-mono text-[11px] uppercase tracking-wider">
-                  <tr>
-                    <th className="p-3">PID</th>
-                    <th className="p-3">İşlem Adı</th>
-                    <th className="p-3">Kullanıcı / Hak</th>
-                    <th className="p-3">CPU Kullanımı</th>
-                    <th className="p-3 text-right">Eylem</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/80 font-mono">
-                  {processes.map(p => (
-                    <tr key={p.Id} className="hover:bg-slate-900/50 transition">
-                      <td className="p-3 text-cyan-400 font-bold">{p.Id}</td>
-                      <td className="p-3 font-sans font-bold text-slate-200">{p.ProcessName}</td>
-                      <td className="p-3 text-slate-400">
-                        <span className="px-2 py-0.5 rounded bg-slate-900 text-[10px] border border-slate-800">
-                          {p.User || 'SYSTEM'}
-                        </span>
-                      </td>
-                      <td className="p-3 text-emerald-400">{p.CPU}</td>
-                      <td className="p-3 text-right">
-                        <button
-                          onClick={() => handleKillProcess(p.Id)}
-                          className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-[11px] transition font-sans font-semibold"
-                        >
-                          Sonlandır
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* SUB-TABS: PROCESSES vs WINDOWS SERVICES */}
+            <div className="flex items-center justify-between mb-4 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSystemSubTab('processes')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                    systemSubTab === 'processes'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <Cpu className="w-3.5 h-3.5" /> Aktif Süreçler ({processes.length})
+                </button>
+                <button
+                  onClick={() => {
+                    setSystemSubTab('services');
+                    if (services.length === 0) refreshServices();
+                  }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                    systemSubTab === 'services'
+                      ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" /> Windows Servisleri ({services.length})
+                </button>
+              </div>
+
+              {systemSubTab === 'services' && (
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Servis adı veya açıklama..."
+                      value={serviceSearch}
+                      onChange={(e) => setServiceSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 w-52"
+                    />
+                  </div>
+                  <button
+                    disabled={isLoadingServices || !isConnected}
+                    onClick={refreshServices}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-40"
+                    title="Servis listesini yenile"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingServices ? 'animate-spin text-cyan-400' : ''}`} />
+                    Yenile
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* PROCESSES VIEW */}
+            {systemSubTab === 'processes' && (
+              <div className="glass-card rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800 font-mono text-[11px] uppercase tracking-wider">
+                    <tr>
+                      <th className="p-3">PID</th>
+                      <th className="p-3">İşlem Adı</th>
+                      <th className="p-3">Kullanıcı / Hak</th>
+                      <th className="p-3">CPU Kullanımı</th>
+                      <th className="p-3 text-right">Eylem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80 font-mono">
+                    {processes.map(p => (
+                      <tr key={p.Id} className="hover:bg-slate-900/50 transition">
+                        <td className="p-3 text-cyan-400 font-bold">{p.Id}</td>
+                        <td className="p-3 font-sans font-bold text-slate-200">{p.ProcessName}</td>
+                        <td className="p-3 text-slate-400">
+                          <span className="px-2 py-0.5 rounded bg-slate-900 text-[10px] border border-slate-800">
+                            {p.User || 'SYSTEM'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-emerald-400">{p.CPU}</td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={() => handleKillProcess(p.Id)}
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-[11px] transition font-sans font-semibold"
+                          >
+                            Sonlandır
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* WINDOWS SERVICES VIEW */}
+            {systemSubTab === 'services' && (
+              <div className="glass-card rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
+                {services.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">
+                    <Layers className="w-10 h-10 mx-auto mb-3 text-slate-600" />
+                    <p className="font-semibold">Servisler henüz yüklenmedi veya hedef makine çevrimdışı.</p>
+                    <button
+                      onClick={refreshServices}
+                      className="mt-3 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs inline-flex items-center gap-2 transition"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Servisleri Getir
+                    </button>
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800 font-mono text-[11px] uppercase tracking-wider">
+                      <tr>
+                        <th className="p-3">Servis Adı (Name)</th>
+                        <th className="p-3">Görünen İsim (DisplayName)</th>
+                        <th className="p-3">Başlangıç Türü</th>
+                        <th className="p-3">Durum</th>
+                        <th className="p-3 text-right">Yönetim</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80 font-mono">
+                      {services
+                        .filter(s => {
+                          if (!serviceSearch.trim()) return true;
+                          const t = serviceSearch.toLowerCase();
+                          return (s.name || '').toLowerCase().includes(t) || (s.displayName || '').toLowerCase().includes(t);
+                        })
+                        .map(s => {
+                          const isRunning = s.status === 'RUNNING';
+                          const isStopped = s.status === 'STOPPED';
+                          return (
+                            <tr key={s.name} className="hover:bg-slate-900/50 transition">
+                              <td className="p-3 text-cyan-400 font-bold font-mono">{s.name}</td>
+                              <td className="p-3 font-sans text-slate-200 max-w-xs truncate" title={s.displayName}>
+                                {s.displayName || s.name}
+                              </td>
+                              <td className="p-3 text-slate-400">
+                                <span className="px-2 py-0.5 rounded bg-slate-900 text-[10px] border border-slate-800">
+                                  {s.startType || 'Manual'}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isRunning
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                    : isStopped
+                                    ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : isStopped ? 'bg-slate-500' : 'bg-amber-400'}`} />
+                                  {isRunning ? 'ÇALIŞIYOR' : isStopped ? 'DURDURULDU' : s.status}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    disabled={isRunning || !isConnected}
+                                    onClick={() => handleServiceAction(s.name, 'start')}
+                                    className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold transition disabled:opacity-30 disabled:hover:bg-emerald-500/10 flex items-center gap-1"
+                                    title="Servisi Başlat"
+                                  >
+                                    <Play className="w-2.5 h-2.5" /> Başlat
+                                  </button>
+                                  <button
+                                    disabled={isStopped || !isConnected}
+                                    onClick={() => handleServiceAction(s.name, 'stop')}
+                                    className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-semibold transition disabled:opacity-30 disabled:hover:bg-rose-500/10 flex items-center gap-1"
+                                    title="Servisi Durdur"
+                                  >
+                                    <Square className="w-2.5 h-2.5" /> Durdur
+                                  </button>
+                                  <button
+                                    disabled={!isConnected}
+                                    onClick={() => handleServiceAction(s.name, 'restart')}
+                                    className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-semibold transition disabled:opacity-30 disabled:hover:bg-amber-500/10 flex items-center gap-1"
+                                    title="Servisi Yeniden Başlat"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" /> Yeniden
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
           </div>
         )}
 

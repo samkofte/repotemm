@@ -102,4 +102,13 @@ flowchart LR
    - `MOUSEEVENTF_VIRTUALDESK` desteğiyle fare koordinat uzayının seçili monitöre piksel piksel doğru eşlenmesi sağlandı.
    - HUD kontrol çubuğuna Monitör Seçici ve Dinamik Yayın Kalitesi seçicisi yerleştirildi.
 
+4. **Aşama 4: Sistem Operasyonları & Güvenli Dosya/Servis Yönetimi**
+   - Dosya indirme ve yükleme işlemlerinde SHA-256 bütünlük kontrolü (tamper detection) entegre edildi.
+   - `agent/py_agent.py` içine Windows servislerini listeleme (`handle_service_list`) ve güvenli servis eylemleri (`handle_service_action`: start, stop, restart) eklendi.
+   - `server/index.js` üzerinde `FS_EXEC`, `FS_DELETE`, `FS_UPLOAD`, `KILL_PROCESS` ve `SERVICE_ACTION` eylemleri için ISO 27001 uyumlu denetim izi yakalama eklendi.
+   - React arayüzünde (Tab 3) "Aktif Süreçler" ve "Windows Servisleri" alt sekmeleri, servis arama/filtreleme ve Başlat/Durdur/Yeniden Başlat kontrolleri tamamlandı.
+
+5. **Aşama 5: Kurumsal Ölçek ve Dağıtım (Sıradaki Aşama)**
+   - Toplu kurulum için MSI paketi, Active Directory Group Policy (GPO) dağıtım betikleri ve sessiz kurulum yapılandırması.
+
 

@@ -12,7 +12,8 @@ SCM (Service Control Manager) modunda:
   SendInput ile fare/klavye kontrolu
 """
 
-import sys, os, time, json, socket, threading, io, ctypes, ctypes.wintypes, base64, queue, winsound
+import sys, os, time, json, socket, threading, io, ctypes, ctypes.wintypes, base64, queue, winsound, hashlib
+
 try:
     import tkinter as tk
     from tkinter import scrolledtext
@@ -882,25 +883,32 @@ def handle_fs(conn, cmd):
                     return
                 with open(fpath, 'rb') as f:
                     content = f.read()
+                file_sha256 = hashlib.sha256(content).hexdigest()
                 b64 = base64.b64encode(content).decode('ascii')
                 res = {
                     'type': 'FS_DOWNLOAD_RES',
                     'path': fpath,
                     'filename': os.path.basename(fpath),
                     'data': b64,
-                    'size': sz
+                    'size': sz,
+                    'sha256': file_sha256
                 }
                 send_json_safe(conn, res)
 
         elif t == 'FS_UPLOAD':
             fpath = cmd.get('path', '')
             b64_data = cmd.get('data', '')
+            expected_sha256 = cmd.get('sha256', '').strip()
             content = base64.b64decode(b64_data)
+            actual_sha256 = hashlib.sha256(content).hexdigest()
+            if expected_sha256 and expected_sha256.lower() != actual_sha256.lower():
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': f'SHA-256 bütünlük hatası! Beklenen: {expected_sha256}, Hesaplanan: {actual_sha256}'})
+                return
             parent = os.path.dirname(os.path.abspath(fpath))
             if parent: os.makedirs(parent, exist_ok=True)
             with open(fpath, 'wb') as f:
                 f.write(content)
-            res = {'type': 'FS_UPLOAD_RES', 'path': fpath, 'success': True}
+            res = {'type': 'FS_UPLOAD_RES', 'path': fpath, 'sha256': actual_sha256, 'size': len(content), 'success': True}
             send_json_safe(conn, res)
 
         elif t == 'FS_DELETE':
@@ -930,7 +938,7 @@ def handle_fs(conn, cmd):
 def handle_task_list(conn):
     try:
         import subprocess
-        cmd = 'powershell -NoProfile -Command "Get-Process | Select-Object -First 50 Id, ProcessName, @{Name=\'CPU\';Expression={$_.CPU}}, WorkingSet64 | ConvertTo-Json"'
+        cmd = 'powershell -NoProfile -Command "Get-Process | Select-Object -First 60 Id, ProcessName, @{Name=\'CPU\';Expression={$_.CPU}}, WorkingSet64 | ConvertTo-Json"'
         out = subprocess.check_output(cmd, shell=True, timeout=5).decode('utf-8', errors='ignore')
         procs = json.loads(out)
         if isinstance(procs, dict): procs = [procs]
@@ -945,6 +953,46 @@ def handle_task_list(conn):
             })
         send_json_safe(conn, {'type':'TASK_LIST_RES','processes':formatted})
     except: pass
+
+def handle_service_list(conn):
+    try:
+        import subprocess
+        cmd = 'powershell -NoProfile -Command "Get-Service | Select-Object -First 100 Name, DisplayName, Status, StartType | ConvertTo-Json -Depth 1"'
+        out = subprocess.check_output(cmd, shell=True, timeout=8).decode('utf-8', errors='ignore')
+        items = json.loads(out)
+        if isinstance(items, dict): items = [items]
+        STATUS_MAP = {1: 'STOPPED', 2: 'START_PENDING', 3: 'STOP_PENDING', 4: 'RUNNING', 5: 'CONTINUE_PENDING', 6: 'PAUSE_PENDING', 7: 'PAUSED'}
+        START_MAP = {0: 'Boot', 1: 'System', 2: 'Automatic', 3: 'Manual', 4: 'Disabled'}
+        services = []
+        for s in items:
+            raw_st = s.get('Status', 1)
+            raw_typ = s.get('StartType', 3)
+            services.append({
+                'name': s.get('Name', ''),
+                'displayName': s.get('DisplayName', ''),
+                'status': STATUS_MAP.get(raw_st, 'UNKNOWN'),
+                'startType': START_MAP.get(raw_typ, 'Manual')
+            })
+        send_json_safe(conn, {'type': 'SERVICE_LIST_RES', 'services': services})
+    except Exception as e:
+        send_json_safe(conn, {'type': 'SERVICE_ERROR', 'message': str(e)})
+
+def handle_service_action(conn, cmd):
+    try:
+        s_name = cmd.get('serviceName', '').strip()
+        action = cmd.get('action', '').strip().lower()
+        if not s_name or action not in ('start', 'stop', 'restart'):
+            return
+        if action == 'start':
+            os.system(f'net start "{s_name}" >nul 2>&1')
+        elif action == 'stop':
+            os.system(f'net stop "{s_name}" /y >nul 2>&1')
+        elif action == 'restart':
+            os.system(f'net stop "{s_name}" /y >nul 2>&1 && net start "{s_name}" >nul 2>&1')
+        send_json_safe(conn, {'type': 'SERVICE_ACTION_RES', 'serviceName': s_name, 'action': action, 'success': True})
+    except Exception as e:
+        send_json_safe(conn, {'type': 'SERVICE_ERROR', 'message': str(e)})
+
 
 CHAT_IPC_PORT = 6131
 CHAT_IPC_CLIENTS = []
@@ -1401,7 +1449,12 @@ def handle_client(conn, addr):
                     threading.Thread(target=handle_fs, args=(conn, cmd), daemon=True).start()
                 elif t=='TASK_LIST':
                     threading.Thread(target=handle_task_list, args=(conn,), daemon=True).start()
+                elif t=='SERVICE_LIST':
+                    threading.Thread(target=handle_service_list, args=(conn,), daemon=True).start()
+                elif t=='SERVICE_ACTION':
+                    threading.Thread(target=handle_service_action, args=(conn, cmd), daemon=True).start()
                 elif t=='KILL_PROCESS':
+
                     try: os.system(f'taskkill /F /PID {int(cmd.get("pid",0))}')
                     except: pass
                 elif t=='AGENT_UPGRADE':

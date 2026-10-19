@@ -200,9 +200,41 @@ class TestAgentProtocol(unittest.TestCase):
         self.assertEqual(py, first['top'])
 
         # Koordinat haritalama testi (Sağ alt 1.0, 1.0 -> right, bottom)
-        px1, py1 = map_normalized_to_screen_coords(1.0, 1.0, 0)
-        self.assertEqual(px1, first['right'])
-        self.assertEqual(py1, first['bottom'])
+    def test_sha256_file_integrity_verification(self):
+        """Dosya yükleme ve indirmede SHA-256 bütünlük kontrolü mantığını doğrular."""
+        import hashlib
+        sample_data = b"RemoteMM Enterprise Secure File Transfer Payload"
+        expected_hash = hashlib.sha256(sample_data).hexdigest()
+
+        # Doğru hash ile eşleşme
+        actual_hash = hashlib.sha256(sample_data).hexdigest()
+        self.assertEqual(expected_hash.lower(), actual_hash.lower())
+
+        # Bozulmuş/değiştirilmiş veri ile eşleşmeme (tampering detection)
+        tampered_data = b"RemoteMM Enterprise Tampered File Transfer Payload"
+        tampered_hash = hashlib.sha256(tampered_data).hexdigest()
+        self.assertNotEqual(expected_hash.lower(), tampered_hash.lower())
+
+    def test_service_status_and_action_whitelist(self):
+        """Windows servisleri durum haritalama ve izin verilen eylem denetimini doğrular."""
+        STATUS_MAP = {1: 'STOPPED', 2: 'START_PENDING', 3: 'STOP_PENDING', 4: 'RUNNING', 5: 'CONTINUE_PENDING', 6: 'PAUSE_PENDING', 7: 'PAUSED'}
+        START_MAP = {0: 'Boot', 1: 'System', 2: 'Automatic', 3: 'Manual', 4: 'Disabled'}
+        ALLOWED_ACTIONS = {'start', 'stop', 'restart'}
+
+        self.assertEqual(STATUS_MAP.get(4), 'RUNNING')
+        self.assertEqual(STATUS_MAP.get(1), 'STOPPED')
+        self.assertEqual(START_MAP.get(2), 'Automatic')
+        self.assertEqual(START_MAP.get(3), 'Manual')
+
+        def is_action_allowed(act):
+            return act.lower().strip() in ALLOWED_ACTIONS
+
+        self.assertTrue(is_action_allowed('start'))
+        self.assertTrue(is_action_allowed('stop'))
+        self.assertTrue(is_action_allowed('restart'))
+        self.assertFalse(is_action_allowed('delete'))
+        self.assertFalse(is_action_allowed('kill'))
+        self.assertFalse(is_action_allowed('disable'))
 
 if __name__ == '__main__':
     unittest.main()

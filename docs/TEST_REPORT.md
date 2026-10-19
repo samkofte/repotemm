@@ -2,20 +2,20 @@
 
 **Tarih:** 19 Ekim 2026  
 **Ortam:** Windows 11 Pro, Python 3.13.14, Node.js v24.18.0, Vite 8.2.0  
-**Geliştirme Aşaması:** Aşama 1 (Güvenlik Çekirdeği), Aşama 2 (NOC Grid & Canlı Telemetri), Aşama 3 (Çoklu Monitör & Dinamik Görüntü Kalitesi)
+**Geliştirme Aşaması:** Aşama 1 (Güvenlik Çekirdeği), Aşama 2 (NOC Grid & Canlı Telemetri), Aşama 3 (Çoklu Monitör), Aşama 4 (Sistem Operasyonları & Servis Yönetimi)
 
 ---
 
 ## 1. Çalıştırılan Komutlar ve Test Sonuçları
 
-### A. Python Protokol, Donanım Parmak İzi (HWID), Telemetri ve Çoklu Monitör Testleri
+### A. Python Protokol, Donanım Parmak İzi (HWID), Telemetri, Monitör, SHA-256 ve Servis Testleri
 * **Komut:** `python -m unittest discover -s tests -p "test_*.py"`
 * **Dosya:** `tests/test_agent_protocol.py`
-* **Test Sayısı:** 10
-* **Geçen:** 10
+* **Test Sayısı:** 12
+* **Geçen:** 12
 * **Başarısız:** 0
 * **Atlanan:** 0
-* **Süre:** 0.050s
+* **Süre:** 0.054s
 * **Detay:**
   1. `test_handshake_ack_structure` — HANDSHAKE_ACK yanıtının zorunlu alanları, çözünürlük ve MAC şemasını doğrulama: **GEÇTİ**
   2. `test_screen_frame_packet` — SCREEN_FRAME veri paketi ve base64 görüntü yükü bütünlüğü: **GEÇTİ**
@@ -27,6 +27,8 @@
   8. `test_identity_generation` — `agent/identity.py`: BIOS, CPU, MachineGuid ve MAC tabanlı 64 karakter SHA-256 HWID üretimi ve `tok_dev_` kimlik doğrulaması: **GEÇTİ**
   9. `test_telemetry_collector` — `agent/telemetry.py`: GlobalMemoryStatusEx, GetDiskFreeSpaceExW, GetTickCount64, GetSystemTimes Win32 API'leri ile harici bağımlılıksız CPU, RAM, Disk, Uptime ve Lock durumu telemetrisi: **GEÇTİ**
   10. `test_multi_monitor_discovery_and_coordinate_mapping` — `agent/display.py`: `EnumDisplayMonitors` ile bağlı tüm ekranların sınır koordinatları, `get_virtual_desktop_bounds()`, sanal masaüstü (ALL) ve tekil monitör yakalama dikdörtgeni hesaplaması ile normalize [0.0, 1.0] fare koordinat uzayı haritalaması: **GEÇTİ**
+  11. `test_sha256_file_integrity_verification` — Dosya yükleme/indirme SHA-256 bütünlük doğrulaması ve veri bozulması/müdahale tespiti: **GEÇTİ**
+  12. `test_service_status_and_action_whitelist` — Windows servisleri durum haritalama (RUNNING, STOPPED) ve izinli eylem beyaz listesi ('start', 'stop', 'restart'): **GEÇTİ**
 
 ---
 
@@ -74,3 +76,8 @@
    - `SELECT_MONITOR` komutu ile teknisyenin belirli bir monitörü veya sanal masaüstünü (Tüm Ekranlar) seçebilmesi sağlandı.
    - `MOUSEEVENTF_VIRTUALDESK (0x4000)` desteğiyle çoklu monitör uzayında hassas piksel koordinat haritalaması tamamlandı.
    - Canlı konsol HUD çubuğuna Monitör Seçici ve Dinamik Yayın Kalitesi seçicisi yerleştirildi.
+4. **Aşama 4: Sistem Operasyonları & Güvenli Dosya/Servis Yönetimi:**
+   - Dosya yükleme ve indirmede istemci-ajan arası SHA-256 bütünlük doğrulaması uygulandı; bozuk veriler engellendi.
+   - Ajan içerisine `handle_service_list` ve `handle_service_action` (start, stop, restart) PowerShell ve net API entegrasyonu tamamlandı.
+   - Ağ geçidinde kritik operatör komutları (`FS_EXEC`, `FS_DELETE`, `FS_UPLOAD`, `KILL_PROCESS`, `SERVICE_ACTION`) için ISO 27001 denetim izi mekanizması işletildi.
+   - React arayüzünde Tab 3 (Süreçler & Servisler) alt sekmeleri, canlı filtreleme, durum etiketleri ve doğrudan servis başlatma/durdurma arayüzü bağlandı.

@@ -572,9 +572,53 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', (message) => {
     if (isConnected && tcpClient.writable && !isCancelled) {
-      tcpClient.write(message.toString() + '\n');
+      const msgStr = message.toString();
+      tcpClient.write(msgStr + '\n');
+
+      try {
+        if (msgStr.charCodeAt(0) === 123) {
+          const cmd = JSON.parse(msgStr);
+          if (cmd.type === 'FS_EXEC') {
+            auditLogger.log({
+              targetHost,
+              operator: username,
+              action: 'FILE_EXECUTE',
+              parameters: { path: cmd.path }
+            });
+          } else if (cmd.type === 'FS_DELETE') {
+            auditLogger.log({
+              targetHost,
+              operator: username,
+              action: 'FILE_DELETE',
+              parameters: { path: cmd.path }
+            });
+          } else if (cmd.type === 'FS_UPLOAD') {
+            auditLogger.log({
+              targetHost,
+              operator: username,
+              action: 'FILE_UPLOAD',
+              parameters: { path: cmd.path, sha256: cmd.sha256 }
+            });
+          } else if (cmd.type === 'KILL_PROCESS') {
+            auditLogger.log({
+              targetHost,
+              operator: username,
+              action: 'PROCESS_TERMINATE',
+              parameters: { pid: cmd.pid }
+            });
+          } else if (cmd.type === 'SERVICE_ACTION') {
+            auditLogger.log({
+              targetHost,
+              operator: username,
+              action: `SERVICE_${(cmd.action || '').toUpperCase()}`,
+              parameters: { serviceName: cmd.serviceName }
+            });
+          }
+        }
+      } catch (e) {}
     }
   });
+
 
   ws.onclose = () => {
     isCancelled = true;

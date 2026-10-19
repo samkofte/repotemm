@@ -17,7 +17,8 @@ export default function App() {
   const [isConsoleDrawerOpen, setIsConsoleDrawerOpen] = useState(false);
   const [consoleDrawerTab, setConsoleDrawerTab] = useState('chat'); // 'chat' | 'processes' | 'info'
 
-  // Connection state
+  // Connection state & State Machine ('disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error')
+  const [sessionState, setSessionState] = useState('disconnected');
   const [targetHost, setTargetHost] = useState('');
   const [targetPort, setTargetPort] = useState('6129');
   const [authDomain, setAuthDomain] = useState('WORKGROUP');
@@ -58,8 +59,12 @@ export default function App() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('ALL');
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const [registeredDevices, setRegisteredDevices] = useState([]);
 
   // Mouse / Canvas / Screen state
+
   const isMousePressedRef = useRef(false);
   const canvasRef = useRef(null);
   const screenImgRef = useRef(null);
@@ -409,12 +414,15 @@ export default function App() {
         if (data.type === 'CONNECTION_ERROR') {
           setIsConnecting(false);
           setIsConnected(false);
+          setSessionState('error');
           setConnectionError({ code: data.errorCode, message: data.errorMessage });
         } else if (data.type === 'DEPLOYMENT_PROGRESS') {
           setDeployStatus(data.message);
         } else if (data.type === 'HANDSHAKE_ACK') {
           setIsConnecting(false);
           setIsConnected(true);
+          setSessionState('connected');
+          reconnectCountRef.current = 0;
           setAgentInfo(data);
           setDeployStatus(null);
           setConnectionError(null);
@@ -442,6 +450,7 @@ export default function App() {
         } else if (data.type === 'SCREEN_FRAME') {
           setIsConnecting(false);
           setIsConnected(true);
+          setSessionState('connected');
           setDeployStatus(null);
           setConnectionError(null);
           if (data.frame) {
@@ -518,17 +527,24 @@ export default function App() {
     ws.onclose = () => {
       setIsConnected(false);
       setIsConnecting(false);
-      // Auto-reconnect up to 5 times
+
+      // Auto-reconnect with exponential backoff (up to 5 attempts)
       if (reconnectCountRef.current < 5 && lastHostRef.current && !isCancelledRef.current) {
         reconnectCountRef.current++;
+        setSessionState('reconnecting');
+        const delay = Math.min(15000, Math.round(1500 * Math.pow(1.5, reconnectCountRef.current - 1)));
+        console.log(`[RemoteMM] Connection dropped. Auto-reconnecting (Attempt ${reconnectCountRef.current}/5 in ${delay}ms)...`);
         reconnectTimerRef.current = setTimeout(() => {
           handleConnect(lastHostRef.current);
-        }, 4000);
+        }, delay);
+      } else {
+        setSessionState('disconnected');
       }
     };
 
     ws.onerror = () => {
       setIsConnecting(false);
+      setSessionState('error');
       setConnectionError({
         code: 'ERR_GATEWAY_OFFLINE',
         message: 'RemoteMM Gateway backend is offline on port 3001. Run "npm run server" or restart the gateway.'
@@ -540,6 +556,7 @@ export default function App() {
     isCancelledRef.current = true;
     reconnectCountRef.current = 0;
     lastHostRef.current = null;
+    setSessionState('disconnected');
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
@@ -1163,8 +1180,52 @@ export default function App() {
     }
   };
 
+  const fetchAuditLogs = async () => {
+    setIsLoadingAudit(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/audit/logs?limit=100');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.logs)) {
+          setAuditLogs(data.logs);
+        }
+      }
+    } catch (err) {
+      console.warn('[RemoteMM] Could not fetch audit logs:', err);
+    } finally {
+      setIsLoadingAudit(false);
+    }
+  };
+
+  const fetchRegisteredDevices = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/devices');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.devices)) {
+          setRegisteredDevices(data.devices);
+        }
+      }
+    } catch (err) {
+      console.warn('[RemoteMM] Could not fetch registered devices:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRegisteredDevices();
+    const interval = setInterval(fetchRegisteredDevices, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Auto trigger FS_LIST or TASK_LIST when switching tabs
   useEffect(() => {
+    if (activeTab === 'audit') {
+      fetchAuditLogs();
+    }
+    if (activeTab === 'fleet') {
+      fetchRegisteredDevices();
+    }
+
     if (isConnected && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       if (activeTab === 'files') {
         requestFsList(remotePath || 'C:\\');
@@ -1289,6 +1350,20 @@ export default function App() {
           >
             <Zap className="w-3.5 h-3.5 text-amber-400" /> Otomatik Dağıtım
           </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('audit');
+              fetchAuditLogs();
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeTab === 'audit'
+                ? 'bg-gradient-to-r from-cyan-500/20 to-sky-500/20 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)]'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5 text-emerald-400" /> Denetim İzi (Audit)
+          </button>
         </nav>
 
         {/* RIGHT NOC TELEMETRY & ACTIONS */}
@@ -1310,6 +1385,22 @@ export default function App() {
               >
                 Disconnect
               </button>
+            </div>
+          ) : sessionState === 'reconnecting' ? (
+            <div className="flex items-center gap-2 bg-slate-950/90 px-3 py-1 rounded-lg border border-amber-500/40 text-[11px] text-amber-300 font-mono shadow-[0_0_12px_rgba(245,158,11,0.2)]">
+              <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+              <span>Yeniden Bağlanıyor ({reconnectCountRef.current}/5)...</span>
+              <button
+                onClick={handleDisconnect}
+                className="ml-1 px-1.5 py-0.2 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-[10px]"
+              >
+                İptal
+              </button>
+            </div>
+          ) : isConnecting ? (
+            <div className="flex items-center gap-2 bg-slate-950/90 px-3 py-1 rounded-lg border border-cyan-500/40 text-[11px] text-cyan-300 font-mono">
+              <RefreshCw className="w-3 h-3 animate-spin text-cyan-400" />
+              <span>Bağlantı Kuruluyor...</span>
             </div>
           ) : (
             <div className="hidden xl:flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px] text-slate-400 font-mono">
@@ -2146,8 +2237,11 @@ export default function App() {
                 const status = hostStatuses[h.id];
                 const isOnline = Boolean(status?.online);
                 const snap = hostSnapshots[h.id];
+                const regDev = registeredDevices.find(d => d.primaryIp === h.ip || d.hostname?.toLowerCase() === h.name?.toLowerCase());
+                const telem = regDev?.telemetry;
 
                 return (
+
                   <div
                     key={`fleet-${h.id || 'host'}-${idx}`}
                     className={`glass-card rounded-2xl p-5 border border-slate-800 hover:border-cyan-500/50 flex flex-col justify-between group transition-all relative ${
@@ -2345,25 +2439,32 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-2 my-3 p-2.5 rounded-xl bg-slate-950/90 border border-slate-800/80 text-[11px] font-mono">
                         <div>
                           <span className="text-slate-500 block text-[10px]">İŞLETİM SİSTEMİ</span>
-                          <span className="text-slate-300 font-semibold">{h.os || 'Windows 11 Pro'}</span>
+                          <span className="text-slate-300 font-semibold truncate block">{regDev?.osName || h.os || 'Windows 11 Pro'}</span>
                         </div>
                         <div>
-                          <span className="text-slate-500 block text-[10px]">AJAN SEVİYESİ</span>
+                          <span className="text-slate-500 block text-[10px]">AJAN / GÜVENLİK</span>
                           <span className={isOnline ? "text-emerald-400 font-semibold" : "text-slate-400 font-semibold"}>
-                            {isOnline ? 'SYSTEM (UAC OK)' : 'OFFLINE'}
+                            {isOnline ? (telem?.isLocked ? '🔒 KİLİTLİ (SYSTEM)' : '🔓 AKTİF (SYSTEM)') : 'OFFLINE'}
                           </span>
                         </div>
                         <div>
-                          <span className="text-slate-500 block text-[10px]">KULLANICI</span>
-                          <span className="text-slate-300 font-semibold">{snap?.user || h.user || 'Administrator'}</span>
+                          <span className="text-slate-500 block text-[10px]">CPU & RAM</span>
+                          {telem ? (
+                            <span className="text-cyan-300 font-semibold block truncate">
+                              %{telem.cpuPercent} CPU • {telem.usedRamMb ? Math.round(telem.usedRamMb / 1024) : 0} GB
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-semibold block truncate">{h.cpu || '8%'} • {h.ram || 'RAM'}</span>
+                          )}
                         </div>
                         <div>
-                          <span className="text-slate-500 block text-[10px]">PORT / MAC</span>
-                          <span className="text-cyan-400 font-semibold truncate block" title={h.mac ? `${h.port || '6129'} • ${h.mac}` : (h.port || '6129')}>
-                            {h.port || '6129'} {h.mac ? `• ${h.mac.substring(0, 8)}...` : ''}
+                          <span className="text-slate-500 block text-[10px]">DİSK / ÇALIŞMA</span>
+                          <span className="text-slate-300 font-semibold truncate block">
+                            {telem?.freeDiskGb ? `${telem.freeDiskGb}GB Boş` : 'C: Hazır'} {telem?.uptimeSec ? `• ${Math.floor(telem.uptimeSec / 3600)}sa` : ''}
                           </span>
                         </div>
                       </div>
+
                     </div>
 
                     {/* Actions Toolbar */}
@@ -3139,6 +3240,97 @@ export default function App() {
                 </div>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            TAB 7: ENTERPRISE AUDIT LOGS & COMPLIANCE (KVKK / ISO 27001)
+        ========================================================================= */}
+        {activeTab === 'audit' && (
+          <div className="flex-1 flex flex-col p-6 overflow-hidden bg-grid-pattern">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-emerald-400" /> Kurumsal Denetim İzi & İşlem Kayıtları
+                </h2>
+                <p className="text-xs text-slate-400">KVKK, ISO 27001 ve SOC 2 uyumlu tahrif edilemez operasyon geçmişi</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={fetchAuditLogs}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isLoadingAudit ? 'animate-spin' : ''}`} /> Kayıtları Yenile
+                </button>
+              </div>
+            </div>
+
+            {/* Audit Logs Table Card */}
+            <div className="flex-1 glass-card rounded-2xl border border-slate-800 flex flex-col overflow-hidden p-4">
+              <div className="flex-1 overflow-y-auto pr-1">
+                {auditLogs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-500 text-xs">
+                    <Shield className="w-12 h-12 text-slate-700 mb-2" />
+                    <p className="font-semibold text-slate-400">Henüz kayıtlı bir denetim olayı bulunmuyor.</p>
+                    <p className="text-[11px] text-slate-600 mt-1">Uzak bağlantı, dosya aktarımı veya güç eylemi yapıldığında burada listelenecektir.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[10px] font-mono text-slate-400 uppercase tracking-wider bg-slate-950/60 sticky top-0 backdrop-blur-md">
+                        <th className="py-2.5 px-3">Zaman</th>
+                        <th className="py-2.5 px-3">Olay Kimliği</th>
+                        <th className="py-2.5 px-3">Eylem</th>
+                        <th className="py-2.5 px-3">Operatör</th>
+                        <th className="py-2.5 px-3">Hedef Cihaz / Host</th>
+                        <th className="py-2.5 px-3">Sonuç</th>
+                        <th className="py-2.5 px-3">Detaylar</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                      {auditLogs.map((log, idx) => {
+                        const isSuccess = log.result === 'SUCCESS';
+                        return (
+                          <tr key={log.eventId || idx} className="hover:bg-slate-900/50 transition">
+                            <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
+                              {log.timestamp ? new Date(log.timestamp).toLocaleString('tr-TR') : 'N/A'}
+                            </td>
+                            <td className="py-2.5 px-3 text-cyan-400 font-bold">
+                              {log.eventId || `aud_${idx}`}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-200">
+                              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px]">
+                                {log.action}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-300">
+                              {log.operator || 'system'}
+                            </td>
+                            <td className="py-2.5 px-3 text-emerald-400 font-bold">
+                              {log.targetHost || log.targetDeviceId || 'NOC Hub'}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isSuccess
+                                  ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
+                                  : 'bg-rose-950/80 text-rose-400 border border-rose-800/40'
+                              }`}>
+                                {log.result || 'OK'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-400 truncate max-w-xs text-[10px]" title={JSON.stringify(log.parameters || {})}>
+                              {log.parameters ? JSON.stringify(log.parameters) : '-'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           </div>
         )}

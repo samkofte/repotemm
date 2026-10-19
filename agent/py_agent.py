@@ -19,6 +19,19 @@ try:
 except Exception:
     pass
 
+try:
+    from identity import load_or_create_identity
+except Exception:
+    def load_or_create_identity():
+        return {'hwid': 'fallback_hwid', 'deviceToken': 'fallback_token', 'tenantId': 'tenant_default'}
+
+try:
+    from telemetry import collect_full_telemetry
+except Exception:
+    def collect_full_telemetry():
+        return {'cpuPercent': 0.0, 'usedRamMb': 0, 'totalRamMb': 0, 'freeDiskGb': 0.0, 'uptimeSec': 0}
+
+
 kernel32 = ctypes.windll.kernel32
 userenv  = ctypes.windll.userenv
 wtsapi32 = ctypes.windll.wtsapi32
@@ -493,8 +506,24 @@ def capture_gdi(quality=78):
     except Exception as e:
         return LAST_FRAME_B64[0]
 
+def capture_thumbnail(max_w=320, max_h=180, quality=40):
+    """NOC paneli grid onizlemesi icin dusuk cozunurluklu, hafif kare yakalar."""
+    try:
+        from PIL import Image
+        frame_b64 = capture_gdi(quality=50)
+        if not frame_b64:
+            return None
+        raw_bytes = base64.b64decode(frame_b64)
+        im = Image.open(io.BytesIO(raw_bytes))
+        im.thumbnail((max_w, max_h), Image.Resampling.BILINEAR)
+        out = io.BytesIO()
+        im.save(out, format='JPEG', quality=quality)
+        return base64.b64encode(out.getvalue()).decode()
+    except Exception:
+        return None
 
 # ─── Input ───────────────────────────────────────────────────
+
 MOUSEEVENTF_LEFTDOWN=0x0002; MOUSEEVENTF_LEFTUP=0x0004
 MOUSEEVENTF_RIGHTDOWN=0x0008; MOUSEEVENTF_RIGHTUP=0x0010
 MOUSEEVENTF_MIDDLEDOWN=0x0020; MOUSEEVENTF_MIDDLEUP=0x0040
@@ -1169,6 +1198,7 @@ def handle_client(conn, addr):
     except:
         mac_str = ''
     w, h = get_scr()
+    ident = load_or_create_identity()
     hs = {
         'type': 'HANDSHAKE_ACK',
         'agentVersion': AGENT_VERSION,
@@ -1177,7 +1207,10 @@ def handle_client(conn, addr):
         'macAddress': mac_str,
         'screenWidth': w,
         'screenHeight': h,
-        'os': 'Windows'
+        'os': 'Windows',
+        'hwid': ident.get('hwid', ''),
+        'tenantId': ident.get('tenantId', 'tenant_default'),
+        'deviceToken': ident.get('deviceToken', '')
     }
     if not send_json_safe(conn, hs):
         with CLIENTS_LOCK:
@@ -1190,12 +1223,36 @@ def handle_client(conn, addr):
 
     quality = [88]
     fps = [0.016]
+    stream_mode = ['INTERACTIVE']
+    last_telemetry_time = [0.0]
     client_alive = [True]
 
     def stream():
         switch_desktop()
         while client_alive[0]:
             try:
+                now = time.time()
+                # 5 saniyede bir hafif telemetri guncellemesi yayinla
+                if now - last_telemetry_time[0] >= 5.0:
+                    last_telemetry_time[0] = now
+                    try:
+                        telem = collect_full_telemetry()
+                        send_json_safe(conn, {'type': 'TELEMETRY_UPDATE', 'data': telem})
+                    except Exception:
+                        pass
+
+                # NOC Preview (dusuk ag ve CPU modu) vs Canli Interaktif Stream
+                if stream_mode[0] == 'PREVIEW':
+                    thumb = capture_thumbnail()
+                    if thumb:
+                        send_json_safe(conn, {
+                            'type': 'NOC_THUMBNAIL',
+                            'frame': thumb,
+                            'timestamp': int(now * 1000)
+                        })
+                    time.sleep(2.0)
+                    continue
+
                 t0 = time.time()
                 frame = capture_gdi(quality[0])
                 if frame:
@@ -1220,6 +1277,7 @@ def handle_client(conn, addr):
         try:
             data = conn.recv(16384)
             if not data: break
+
             buf += data.decode('utf-8', errors='ignore')
             lines = buf.split('\n'); buf = lines.pop()
             for line in lines:
@@ -1254,10 +1312,18 @@ def handle_client(conn, addr):
                         })
                 elif t=='CHAT_OPEN':
                     ensure_chat_ui()
+                elif t=='SET_STREAM_MODE':
+                    stream_mode[0] = str(cmd.get('mode', 'INTERACTIVE')).upper()
+                elif t=='GET_THUMBNAIL':
+                    th = capture_thumbnail()
+                    send_json_safe(conn, {'type': 'THUMBNAIL_RESPONSE', 'frame': th})
+                elif t=='TELEMETRY_REQUEST':
+                    send_json_safe(conn, {'type': 'TELEMETRY_RESPONSE', 'data': collect_full_telemetry()})
                 elif t=='SET_QUALITY': quality[0] = max(30,min(95,int(cmd.get('quality',88))))
                 elif t=='SET_FPS':
                     req_fps = int(cmd.get('fps',0))
                     fps[0] = 0.016 if (req_fps <= 0 or req_fps >= 60) else (1.0 / max(5, req_fps))
+
                 elif t=='AUDIO_CHUNK':
                     try:
                         raw_b64 = cmd.get('data', '')

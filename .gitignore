@@ -23,3 +23,15 @@ public/RemoteMM_Setup.exe
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+*.spec.bak
+
+# Local databases & logs
+data/*.db
+data/audit_logs/*.jsonl
+

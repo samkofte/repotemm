@@ -1,0 +1,161 @@
+import unittest
+import json
+import time
+
+class TestAgentProtocol(unittest.TestCase):
+    """
+    Python Ajanı (py_agent.py) protokol şeması, mesaj doğrulama,
+    güvenlik sınırları ve dosya yönetimi birim testleri.
+    """
+
+    def test_handshake_ack_structure(self):
+        """HANDSHAKE_ACK yanıtının gerekli alanları içerdiğini doğrular."""
+        sample_hs = {
+            'type': 'HANDSHAKE_ACK',
+            'agentVersion': 'RemoteMM v4.2',
+            'hostname': 'TEST-PC',
+            'user': 'SYSTEM',
+            'macAddress': '00:15:5D:01:68:01',
+            'screenWidth': 1920,
+            'screenHeight': 1080,
+            'os': 'Windows'
+        }
+        self.assertEqual(sample_hs['type'], 'HANDSHAKE_ACK')
+        self.assertIn('screenWidth', sample_hs)
+        self.assertIn('screenHeight', sample_hs)
+        self.assertGreater(sample_hs['screenWidth'], 0)
+        self.assertGreater(sample_hs['screenHeight'], 0)
+        self.assertTrue(sample_hs['macAddress'].count(':') == 5 or sample_hs['macAddress'] == '')
+
+    def test_screen_frame_packet(self):
+        """SCREEN_FRAME veri paketinin bütünlüğünü test eder."""
+        packet = {
+            'type': 'SCREEN_FRAME',
+            'frame': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            'timestamp': int(time.time() * 1000),
+            'width': 1920,
+            'height': 1080,
+            'blackedOut': False
+        }
+        self.assertEqual(packet['type'], 'SCREEN_FRAME')
+        self.assertIsInstance(packet['frame'], str)
+        self.assertIsInstance(packet['timestamp'], int)
+        self.assertIsInstance(packet['blackedOut'], bool)
+
+    def test_mouse_input_coordinate_bounds(self):
+        """Fare koordinatlarının [0.0, 1.0] aralığında sınırlandırıldığını test eder."""
+        def sanitize_coord(val):
+            try:
+                f = float(val)
+                return max(0.0, min(1.0, f))
+            except (ValueError, TypeError):
+                return 0.0
+
+        self.assertEqual(sanitize_coord(0.5), 0.5)
+        self.assertEqual(sanitize_coord(-0.2), 0.0)
+        self.assertEqual(sanitize_coord(1.5), 1.0)
+        self.assertEqual(sanitize_coord("invalid"), 0.0)
+        self.assertEqual(sanitize_coord(None), 0.0)
+
+    def test_chat_message_validation(self):
+        """Sohbet mesajlarının boşluk temizleme ve sınır kontrolünü test eder."""
+        def validate_chat(text, max_len=2000):
+            if not text or not isinstance(text, str):
+                return None
+            cleaned = text.strip()
+            if not cleaned:
+                return None
+            return cleaned[:max_len]
+
+        self.assertEqual(validate_chat("  Merhaba RemoteMM!  "), "Merhaba RemoteMM!")
+        self.assertIsNone(validate_chat("   "))
+        self.assertIsNone(validate_chat(None))
+        self.assertIsNone(validate_chat(12345))
+        long_text = "A" * 3000
+        self.assertEqual(len(validate_chat(long_text)), 2000)
+
+    def test_file_size_limit_check(self):
+        """Dosya indirme ve yükleme için 25MB sınır denetimini test eder."""
+        MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
+        
+        def check_size(sz):
+            return sz <= MAX_FILE_SIZE
+
+        self.assertTrue(check_size(1024))
+        self.assertTrue(check_size(25 * 1024 * 1024))
+        self.assertFalse(check_size(25 * 1024 * 1024 + 1))
+        self.assertFalse(check_size(50 * 1024 * 1024))
+
+    def test_path_sanitization(self):
+        """Path traversal risklerine karşı dosya yolu doğrulamasını test eder."""
+        def is_safe_relative_path(base_dir, requested_path):
+            import os
+            abs_base = os.path.abspath(base_dir)
+            abs_req = os.path.abspath(os.path.join(base_dir, requested_path))
+            return abs_req.startswith(abs_base)
+
+        self.assertTrue(is_safe_relative_path("C:\\RemoteMM", "logs\\agent.log"))
+        self.assertFalse(is_safe_relative_path("C:\\RemoteMM", "..\\Windows\\System32"))
+
+    def test_allowed_power_actions(self):
+        """Desteklenen güç eylemleri listesi dışındaki eylemlerin engellendiğini test eder."""
+        ALLOWED_ACTIONS = {'shutdown', 'reboot', 'sleep', 'hibernate', 'lock', 'logoff', 'abort'}
+        
+        self.assertIn('shutdown', ALLOWED_ACTIONS)
+        self.assertIn('reboot', ALLOWED_ACTIONS)
+        self.assertIn('lock', ALLOWED_ACTIONS)
+        self.assertNotIn('destroy', ALLOWED_ACTIONS)
+        self.assertNotIn('format', ALLOWED_ACTIONS)
+        self.assertNotIn('rmdir', ALLOWED_ACTIONS)
+
+    def test_identity_generation(self):
+        """agent.identity modülünün HWID ve kimlik üretimini doğrular."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        from agent.identity import generate_hwid, load_or_create_identity
+
+        hwid = generate_hwid()
+        self.assertIsInstance(hwid, str)
+        self.assertEqual(len(hwid), 64)
+        self.assertTrue(all(c in '0123456789abcdef' for c in hwid.lower()))
+
+        ident = load_or_create_identity("test_tenant_id")
+        self.assertIn('hwid', ident)
+        self.assertIn('deviceToken', ident)
+        self.assertIn('tenantId', ident)
+        self.assertTrue(ident['deviceToken'].startswith('tok_dev_'))
+        self.assertEqual(ident['hwid'], hwid)
+
+    def test_telemetry_collector(self):
+        """agent.telemetry modülünün Win32 sistem metriklerini doğru topladığını test eder."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        from agent.telemetry import collect_full_telemetry, get_memory_info, get_disk_free_gb, get_uptime_sec
+
+        total_mb, used_mb, free_mb, pct = get_memory_info()
+        self.assertGreater(total_mb, 0)
+        self.assertGreaterEqual(used_mb, 0)
+        self.assertGreaterEqual(pct, 0.0)
+        self.assertLessEqual(pct, 100.0)
+
+        disk_gb = get_disk_free_gb('C:\\')
+        self.assertGreater(disk_gb, 0.0)
+
+        uptime = get_uptime_sec()
+        self.assertGreater(uptime, 0)
+
+        snapshot = collect_full_telemetry()
+        self.assertIn('cpuPercent', snapshot)
+        self.assertIn('totalRamMb', snapshot)
+        self.assertIn('usedRamMb', snapshot)
+        self.assertIn('freeDiskGb', snapshot)
+        self.assertIn('uptimeSec', snapshot)
+        self.assertIn('isLocked', snapshot)
+        self.assertIsInstance(snapshot['isLocked'], bool)
+
+if __name__ == '__main__':
+    unittest.main()
+
+

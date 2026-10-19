@@ -9,11 +9,13 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { pushDeployAgent } from './deployer.js';
 import { sendWakeOnLan, getMacFromIp } from './wol.js';
+import { registry } from './registry.js';
+import { auditLogger } from './audit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-export const CURRENT_AGENT_VERSION = 'RemoteMM v4.2';
+export const CURRENT_AGENT_VERSION = 'RemoteMM Enterprise v5.0';
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -23,7 +25,26 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', service: 'DameWare Console Gateway', port: PORT, agentVersion: CURRENT_AGENT_VERSION });
+  res.json({
+    status: 'OK',
+    service: 'RemoteMM Enterprise Gateway & NOC Hub',
+    port: PORT,
+    agentVersion: CURRENT_AGENT_VERSION,
+    registeredDevices: registry.getAllDevices().length
+  });
+});
+
+// Central Registry: Get registered enterprise devices
+app.get('/api/devices', (req, res) => {
+  const tenantId = req.query.tenantId || null;
+  res.json({ success: true, devices: registry.getAllDevices(tenantId) });
+});
+
+// Compliance & Audit Logs: Get recent operations trail
+app.get('/api/audit/logs', (req, res) => {
+  const limit = parseInt(req.query.limit || '100', 10);
+  const tenantId = req.query.tenantId || null;
+  res.json({ success: true, logs: auditLogger.getRecentLogs(limit, tenantId) });
 });
 
 // Wake-on-LAN (WoL) Paketi Gonder
@@ -73,6 +94,12 @@ app.post('/api/power/action', async (req, res) => {
       if (!responded) {
         responded = true;
         try { sock.destroy(); } catch (e) {}
+        auditLogger.log({
+          targetHost,
+          action: `POWER_ACTION_${action.toUpperCase()}`,
+          operator: 'admin',
+          parameters: { method: 'agent_direct', port: targetPort }
+        });
         return res.json({ success: true, method: 'agent_direct', action });
       }
     }, 250);
@@ -434,9 +461,53 @@ wss.on('connection', (ws, req) => {
               const parsed = JSON.parse(line);
               const remoteVer = parsed.agentVersion || 'v1.0';
               console.log(`[Gateway] Agent Handshake ACK: Remote version "${remoteVer}" connected on ${targetHost}:${targetPort}`);
+              
+              // Register device in Central Enterprise Registry
+              registry.registerOrAuthenticate({
+                hwid: parsed.hwid || `hwid_${targetHost.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                tenantId: parsed.tenantId || 'tenant_default',
+                deviceToken: parsed.deviceToken,
+                systemInfo: {
+                  hostname: parsed.hostname || targetHost,
+                  agentVersion: remoteVer,
+                  primaryMac: parsed.macAddress || '',
+                  os: parsed.os || 'Windows',
+                  totalRamBytes: parsed.totalRamBytes || 0,
+                  cpu: parsed.cpuModel || ''
+                }
+              }, targetHost);
+
+              // Record in immutable audit log
+              auditLogger.log({
+                targetHost,
+                action: 'SESSION_CONNECTED',
+                operator: username,
+                parameters: { agentVersion: remoteVer, hostname: parsed.hostname }
+              });
+            } else if (line.includes('"DEVICE_HEARTBEAT"')) {
+              const parsed = JSON.parse(line);
+              if (parsed.hwid) {
+                registry.recordTelemetry(parsed.hwid, parsed);
+              }
+            } else if (line.includes('"TELEMETRY_UPDATE"')) {
+              const parsed = JSON.parse(line);
+              const dev = registry.getDeviceByIpOrHost(targetHost);
+              if (dev && parsed.data) {
+                registry.recordTelemetry(dev.hwid, parsed.data);
+              }
+            } else if (line.includes('"NOC_THUMBNAIL"')) {
+              const parsed = JSON.parse(line);
+              if (parsed.frame) {
+                thumbnailCache.set(targetHost, {
+                  frame: parsed.frame,
+                  snapshot: parsed.frame,
+                  timestamp: Date.now()
+                });
+              }
             }
           }
         } catch (e) {}
+
 
         if (ws.readyState === WebSocket.OPEN && !isCancelled) {
           // Backpressure protection: eger ag/tarayici yetisemiyorsa bayat video karesini atla

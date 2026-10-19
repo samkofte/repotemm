@@ -1297,7 +1297,7 @@ def ask_user_consent(operator_name="Teknisyen", timeout_sec=30):
         return True, f"BYPASS_ERROR_{e}"
 
 def handle_client(conn, addr):
-    global LOCKED, BLACKOUT
+    global LOCKED, BLACKOUT, CONSENT_POLICY
     with CLIENTS_LOCK:
         ACTIVE_CLIENTS.append(conn)
 
@@ -1509,7 +1509,6 @@ def handle_client(conn, addr):
                             except: pass
                     threading.Thread(target=do_consent, daemon=True).start()
                 elif t=='SET_CONSENT_POLICY':
-                    global CONSENT_POLICY
                     CONSENT_POLICY = bool(cmd.get('enabled', False))
                     send_json_safe(conn, {'type': 'CONSENT_POLICY_ACK', 'enabled': CONSENT_POLICY})
         except: break

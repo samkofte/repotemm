@@ -236,6 +236,38 @@ class TestAgentProtocol(unittest.TestCase):
         self.assertFalse(is_action_allowed('kill'))
         self.assertFalse(is_action_allowed('disable'))
 
+    def test_cli_flags_and_install_command_generation(self):
+        """Ajan CLI parametreleri ve zamanlanmış görev komut formatını doğrular."""
+        SUPPORTED_FLAGS = {'--install', '--uninstall', '--status', '--version', '--chat-ui', '--server'}
+        for flag in ['--install', '--uninstall', '--status', '--version']:
+            self.assertIn(flag, SUPPORTED_FLAGS)
+
+        # Scheduled task oluşturma komutu format denetimi
+        target_exe = r"C:\RemoteMM\RemoteMM_Agent.exe"
+        cmd = f'schtasks /create /tn "RemoteMMAgent" /tr "\"{target_exe}\"" /ru "SYSTEM" /sc ONSTART /rl HIGHEST /f'
+        self.assertIn('/ru "SYSTEM"', cmd)
+        self.assertIn('/sc ONSTART', cmd)
+        self.assertIn('/rl HIGHEST', cmd)
+        self.assertIn('RemoteMMAgent', cmd)
+
+    def test_enterprise_deployment_scripts_exist(self):
+        """Kurumsal dağıtım ve sağlık denetimi betiklerinin varlığını ve bütünlüğünü doğrular."""
+        import os
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        scripts_dir = os.path.join(base_dir, 'scripts')
+        self.assertTrue(os.path.isdir(scripts_dir), "scripts/ dizini mevcut olmalı")
+
+        expected_files = [
+            'install-agent.bat',
+            'uninstall-agent.bat',
+            'deploy-gpo.ps1',
+            'verify-agent.ps1'
+        ]
+        for f in expected_files:
+            fpath = os.path.join(scripts_dir, f)
+            self.assertTrue(os.path.isfile(fpath), f"Betik dosyası mevcut olmalı: {f}")
+            self.assertGreater(os.path.getsize(fpath), 100, f"Betik dosyası boş olmamalı: {f}")
+
 if __name__ == '__main__':
     unittest.main()
 

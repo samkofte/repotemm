@@ -23,6 +23,7 @@ app.use(cors());
 app.use(express.json());
 // EXE ve diger public dosyalari HTTP ile sun
 app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use('/scripts', express.static(path.join(__dirname, '..', 'scripts')));
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -347,8 +348,19 @@ app.get('/api/setup-command', (req, res) => {
 
   const downloadUrl = `http://${localIp}:3001/RemoteMM_Agent.exe`;
   const cmd = `powershell -ExecutionPolicy Bypass -Command "irm http://${localIp}:3001/install.ps1 | iex"`;
+  const gpoCmd = `powershell -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; & (irm http://${localIp}:3001/scripts/deploy-gpo.ps1) -GatewayServer 'http://${localIp}:3001'"`;
+  const batchUrl = `http://${localIp}:3001/scripts/install-agent.bat`;
+  const verifyUrl = `http://${localIp}:3001/scripts/verify-agent.ps1`;
 
-  res.json({ cmd, downloadUrl, serverIp: localIp, agentVersion: CURRENT_AGENT_VERSION });
+  res.json({
+    cmd,
+    gpoCmd,
+    batchUrl,
+    verifyUrl,
+    downloadUrl,
+    serverIp: localIp,
+    agentVersion: CURRENT_AGENT_VERSION
+  });
 });
 
 app.post('/api/agent/deploy', async (req, res) => {

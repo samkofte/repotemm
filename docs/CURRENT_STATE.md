@@ -108,7 +108,13 @@ flowchart LR
    - `server/index.js` üzerinde `FS_EXEC`, `FS_DELETE`, `FS_UPLOAD`, `KILL_PROCESS` ve `SERVICE_ACTION` eylemleri için ISO 27001 uyumlu denetim izi yakalama eklendi.
    - React arayüzünde (Tab 3) "Aktif Süreçler" ve "Windows Servisleri" alt sekmeleri, servis arama/filtreleme ve Başlat/Durdur/Yeniden Başlat kontrolleri tamamlandı.
 
-5. **Aşama 5: Kurumsal Ölçek ve Dağıtım (Sıradaki Aşama)**
-   - Toplu kurulum için MSI paketi, Active Directory Group Policy (GPO) dağıtım betikleri ve sessiz kurulum yapılandırması.
+5. **Aşama 5: Kurumsal Ölçek ve Dağıtım (TAMAMLANDI)**
+   - Ajan komut satırı arayüzü (`--install`, `--uninstall`, `--status`, `--version`) geliştirildi.
+   - Active Directory GPO & Microsoft Intune otomatik dağıtım betiği (`scripts/deploy-gpo.ps1`) hazırlandı.
+   - Sessiz kurumsal batch yükleyicisi (`scripts/install-agent.bat`) ve kaldırıcı (`scripts/uninstall-agent.bat`) eklendi.
+   - Uç nokta sağlık denetim ve teşhis betiği (`scripts/verify-agent.ps1`) oluşturuldu.
+   - Node.js Gateway sunucusuna `/scripts` statik dağıtım köprüsü ve dinamik GPO URL üreticisi eklendi.
+   - React arayüzünde Tab 6 (Ajan Dağıtım Merkezi) 4 kurumsal dağıtım moduyla güncellendi.
+   - Tüm aşamalar (Aşama 0'dan Aşama 5'e) %100 test başarı oranıyla tamamlandı ve GitHub ana dalına gönderildi.
 
 

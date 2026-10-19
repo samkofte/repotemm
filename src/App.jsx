@@ -59,6 +59,10 @@ export default function App() {
   // Modals & UI helpers
   const [activeModal, setActiveModal] = useState(null);
   const [setupCommand, setSetupCommand] = useState('');
+  const [setupGpoCommand, setSetupGpoCommand] = useState('');
+  const [setupBatchUrl, setSetupBatchUrl] = useState('');
+  const [setupVerifyUrl, setSetupVerifyUrl] = useState('');
+  const [deployTabMode, setDeployTabMode] = useState('ps1'); // 'ps1' | 'gpo' | 'batch' | 'verify'
   const [copiedCode, setCopiedCode] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('ALL');
@@ -162,8 +166,11 @@ export default function App() {
     fetch(url)
       .then(res => res.json())
       .then(data => {
-        if (data && data.cmd) {
-          setSetupCommand(data.cmd);
+        if (data) {
+          if (data.cmd) setSetupCommand(data.cmd);
+          if (data.gpoCmd) setSetupGpoCommand(data.gpoCmd);
+          if (data.batchUrl) setSetupBatchUrl(data.batchUrl);
+          if (data.verifyUrl) setSetupVerifyUrl(data.verifyUrl);
         }
       })
       .catch(err => {
@@ -3445,45 +3452,234 @@ export default function App() {
                 </p>
               </div>
 
-              {/* WORKGROUP 1-LINER SCRIPT CARD */}
-              <div className="glass-card rounded-2xl p-6 border-cyan-500/30 shadow-[0_0_20px_rgba(56,189,248,0.1)]">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Terminal className="w-5 h-5 text-cyan-400" />
-                    <h3 className="font-bold text-sm text-slate-100">Tek Satırlık PowerShell Kurulum Kodu (Workgroup)</h3>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/50">
-                    DİNAMİK IP BAĞLANTISI
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed mb-4">
-                  Sıfır bir sanal veya fiziksel makineye uzaktan ilk bağlantıyı açmak için, hedef makinede <strong>PowerShell'i Yönetici Olarak Çalıştırın</strong> ve aşağıdaki kodu yapıştırın:
-                </p>
-
-                <div className="relative group mb-4">
-                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-[11px] text-cyan-300 whitespace-pre-wrap break-all select-all max-h-40 overflow-y-auto">
-                    {setupCommand || 'Komut yükleniyor...'}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => copyToClipboard(setupCommand)}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(56,189,248,0.25)] transition"
-                  >
-                    <Copy className="w-4 h-4" /> {copiedCode ? 'Başarıyla Kopyalandı!' : 'Kurulum Kodunu Kopyala'}
-                  </button>
-
-                  <a
-                    href="/RemoteMM_Agent.exe"
-                    download="RemoteMM_Agent.exe"
-                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold text-xs flex items-center gap-2 transition"
-                  >
-                    <Download className="w-4 h-4" /> Çevrimdışı .EXE İndir
-                  </a>
-                </div>
+              {/* ENTERPRISE DEPLOYMENT SUB-TABS */}
+              <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800">
+                <button
+                  onClick={() => setDeployTabMode('ps1')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition ${
+                    deployTabMode === 'ps1'
+                      ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Terminal className="w-3.5 h-3.5" /> Tek Satırlık PowerShell (Hızlı)
+                </button>
+                <button
+                  onClick={() => setDeployTabMode('gpo')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition ${
+                    deployTabMode === 'gpo'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Server className="w-3.5 h-3.5" /> Active Directory GPO & Intune
+                </button>
+                <button
+                  onClick={() => setDeployTabMode('batch')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition ${
+                    deployTabMode === 'batch'
+                      ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5" /> Sessiz Kurulum (Batch / SCCM)
+                </button>
+                <button
+                  onClick={() => setDeployTabMode('verify')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition ${
+                    deployTabMode === 'verify'
+                      ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Sağlık Doğrulama (Sanity)
+                </button>
               </div>
+
+              {/* TAB CONTENT 1: WORKGROUP 1-LINER */}
+              {deployTabMode === 'ps1' && (
+                <div className="glass-card rounded-2xl p-6 border-cyan-500/30 shadow-[0_0_20px_rgba(56,189,248,0.1)]">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="w-5 h-5 text-cyan-400" />
+                      <h3 className="font-bold text-sm text-slate-100">Tek Satırlık PowerShell Kurulum Kodu (Workgroup)</h3>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/50">
+                      DİNAMİK IP BAĞLANTISI
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                    Sıfır bir sanal veya fiziksel makineye uzaktan ilk bağlantıyı açmak için, hedef makinede <strong>PowerShell'i Yönetici Olarak Çalıştırın</strong> ve aşağıdaki kodu yapıştırın:
+                  </p>
+
+                  <div className="relative group mb-4">
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-[11px] text-cyan-300 whitespace-pre-wrap break-all select-all max-h-40 overflow-y-auto">
+                      {setupCommand || 'Komut yükleniyor...'}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => copyToClipboard(setupCommand)}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(56,189,248,0.25)] transition"
+                    >
+                      <Copy className="w-4 h-4" /> {copiedCode ? 'Başarıyla Kopyalandı!' : 'Kurulum Kodunu Kopyala'}
+                    </button>
+
+                    <a
+                      href="/RemoteMM_Agent.exe"
+                      download="RemoteMM_Agent.exe"
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold text-xs flex items-center gap-2 transition"
+                    >
+                      <Download className="w-4 h-4" /> Çevrimdışı .EXE İndir
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT 2: ACTIVE DIRECTORY GPO & INTUNE */}
+              {deployTabMode === 'gpo' && (
+                <div className="glass-card rounded-2xl p-6 border-indigo-500/30 shadow-[0_0_20px_rgba(99,102,241,0.1)]">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-5 h-5 text-indigo-400" />
+                      <h3 className="font-bold text-sm text-slate-100">Active Directory GPO / Intune Otomatik Dağıtım Betiği</h3>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-400 border border-indigo-800/50">
+                      GPO STARTUP SCRIPT
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                    Kurumsal etki alanınızdaki (Domain) tüm bilgisayarlara Group Policy Management Console (<code className="text-indigo-300">gpmc.msc</code>) üzerinden <strong>Computer Configuration &gt; Policies &gt; Windows Settings &gt; Scripts &gt; Startup</strong> altına ekleyebileceğiniz hazır dağıtım komutu:
+                  </p>
+
+                  <div className="relative group mb-4">
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-[11px] text-indigo-300 whitespace-pre-wrap break-all select-all max-h-40 overflow-y-auto">
+                      {setupGpoCommand || 'GPO komutu yükleniyor...'}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => copyToClipboard(setupGpoCommand)}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 text-white font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(99,102,241,0.25)] transition"
+                    >
+                      <Copy className="w-4 h-4" /> {copiedCode ? 'Başarıyla Kopyalandı!' : 'GPO Dağıtım Kodunu Kopyala'}
+                    </button>
+
+                    <a
+                      href="http://localhost:3001/scripts/deploy-gpo.ps1"
+                      download="deploy-gpo.ps1"
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold text-xs flex items-center gap-2 transition"
+                    >
+                      <Download className="w-4 h-4" /> deploy-gpo.ps1 İndir
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT 3: SILENT BATCH / SCCM */}
+              {deployTabMode === 'batch' && (
+                <div className="glass-card rounded-2xl p-6 border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.1)]">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-amber-400" />
+                      <h3 className="font-bold text-sm text-slate-100">Sessiz Batch Kurulumu & Kaldırma (SCCM / PDQ Deploy)</h3>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800/50">
+                      UNATTENDED INSTALLER
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                    Mevcut yazılım dağıtım sistemleriniz (Microsoft SCCM, Microsoft Intune Win32 App, PDQ Deploy) ile sıfır kullanıcı etkileşimiyle arka planda kurulum ve kaldırma betikleri:
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-emerald-400">Kurulum Betiği (Install)</span>
+                        <a
+                          href="http://localhost:3001/scripts/install-agent.bat"
+                          download="install-agent.bat"
+                          className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <Download className="w-3 h-3" /> İndir (.bat)
+                        </a>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mb-2">
+                        C:\RemoteMM dizinini oluşturur, ikili dosyaları kopyalar, güvenlik duvarı portu (6129) açar ve SYSTEM görevini zamanlar.
+                      </p>
+                      <code className="text-[10px] font-mono text-slate-300 bg-slate-900 p-1.5 rounded block">
+                        install-agent.bat
+                      </code>
+                    </div>
+
+                    <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-rose-400">Kaldırma Betiği (Uninstall)</span>
+                        <a
+                          href="http://localhost:3001/scripts/uninstall-agent.bat"
+                          download="uninstall-agent.bat"
+                          className="text-[11px] text-rose-400 hover:underline flex items-center gap-1"
+                        >
+                          <Download className="w-3 h-3" /> İndir (.bat)
+                        </a>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mb-2">
+                        Aktif ajan sürecini sonlandırır, Windows zamanlanmış görevini siler ve güvenlik duvarı kurallarını kaldırır.
+                      </p>
+                      <code className="text-[10px] font-mono text-slate-300 bg-slate-900 p-1.5 rounded block">
+                        uninstall-agent.bat
+                      </code>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT 4: SANITY & HEALTH VERIFICATION */}
+              {deployTabMode === 'verify' && (
+                <div className="glass-card rounded-2xl p-6 border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      <h3 className="font-bold text-sm text-slate-100">Uç Nokta Sağlık ve Bütünlük Doğrulama (Sanity Check)</h3>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/50">
+                      HEALTH DIAGNOSTIC
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                    Kurulum yapılan hedef bilgisayarda ajanın gerçekten aktif olduğunu, port 6129'un dinlendiğini, güvenlik duvarının ve SYSTEM görev durumunu anında doğrulamak için PowerShell'de çalıştırın:
+                  </p>
+
+                  <div className="relative group mb-4">
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-[11px] text-emerald-300 whitespace-pre-wrap break-all select-all">
+                      powershell -ExecutionPolicy Bypass -Command "irm http://localhost:3001/scripts/verify-agent.ps1 | iex"
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => copyToClipboard('powershell -ExecutionPolicy Bypass -Command "irm http://localhost:3001/scripts/verify-agent.ps1 | iex"')}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-90 text-white font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.25)] transition"
+                    >
+                      <Copy className="w-4 h-4" /> Doğrulama Kodunu Kopyala
+                    </button>
+
+                    <a
+                      href="http://localhost:3001/scripts/verify-agent.ps1"
+                      download="verify-agent.ps1"
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold text-xs flex items-center gap-2 transition"
+                    >
+                      <Download className="w-4 h-4" /> verify-agent.ps1 İndir
+                    </a>
+                  </div>
+                </div>
+              )}
 
               {/* ARCHITECTURE HIGHLIGHTS */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

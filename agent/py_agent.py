@@ -1596,10 +1596,76 @@ def try_run_as_service():
         advapi32.StartServiceCtrlDispatcherW(table)
     except: pass
 
+def install_agent():
+    r"""Kurumsal sessiz kurulum: C:\RemoteMM altina kopyalar, guvenlik duvari ve SYSTEM gorevi ekler."""
+    print("[RemoteMM] Enterprise Agent Kurulumu Baslatiliyor...")
+    target_dir = r"C:\RemoteMM"
+    target_exe = os.path.join(target_dir, "RemoteMM_Agent.exe")
+    current_exe = os.path.abspath(sys.argv[0])
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+        if os.path.abspath(current_exe).lower() != os.path.abspath(target_exe).lower():
+            import shutil
+            shutil.copy2(current_exe, target_exe)
+            print(f"[RemoteMM] Ikili dosya kopyalandi: {target_exe}")
+        os.system('netsh advfirewall firewall add rule name="RemoteMMAgent" dir=in action=allow protocol=TCP localport=6129 >nul 2>&1')
+        os.system('netsh advfirewall firewall add rule name="RemoteMM_WoL_In" dir=in action=allow protocol=UDP localport=7,9 >nul 2>&1')
+        os.system('schtasks /delete /tn "RemoteMMAgent" /f >nul 2>&1')
+        cmd = f'schtasks /create /tn "RemoteMMAgent" /tr "\"{target_exe}\"" /ru "SYSTEM" /sc ONSTART /rl HIGHEST /f'
+        ret = os.system(cmd)
+        if ret == 0:
+            print("[RemoteMM] Scheduled Task (SYSTEM - ONSTART) basariyla kaydedildi.")
+            os.system('schtasks /run /tn "RemoteMMAgent" >nul 2>&1')
+            print("[RemoteMM] Ajan arka planda baslatildi.")
+        else:
+            print("[RemoteMM] UYARI: Zamanlanmis gorev olusturulamadi (Yonetici yetkisi gerekebilir).")
+    except Exception as e:
+        print(f"[RemoteMM] Kurulum hatasi: {e}")
+
+def uninstall_agent():
+    """Kurumsal temiz kaldirma: Gorevleri, kurallari ve calisan sureci temizler."""
+    print("[RemoteMM] Enterprise Agent Kaldiriliyor...")
+    try:
+        os.system('schtasks /delete /tn "RemoteMMAgent" /f >nul 2>&1')
+        os.system('taskkill /F /IM "RemoteMM_Agent.exe" >nul 2>&1')
+        os.system('netsh advfirewall firewall delete rule name="RemoteMMAgent" >nul 2>&1')
+        os.system('netsh advfirewall firewall delete rule name="RemoteMM_WoL_In" >nul 2>&1')
+        print("[RemoteMM] Servis, gorevler ve guvenlik duvari kurallari temizlendi.")
+    except Exception as e:
+        print(f"[RemoteMM] Kaldirma hatasi: {e}")
+
+def print_agent_status():
+    """Ajan kimlik ve calisma durumu JSON formatinda konsola basar."""
+    try:
+        from identity import generate_hwid
+        hwid = generate_hwid()
+    except:
+        hwid = "UNKNOWN"
+    status = {
+        'version': 'RemoteMM Enterprise v4.2.0-LTS',
+        'hwid': hwid,
+        'port': PORT,
+        'platform': sys.platform,
+        'isAdmin': ctypes.windll.shell32.IsUserAnAdmin() != 0 if hasattr(ctypes.windll, 'shell32') else False
+    }
+    print(json.dumps(status, indent=2))
+
 # ─── ENTRY POINT ─────────────────────────────────────────────
 if __name__ == '__main__':
     try:
-        if '--chat-ui' in sys.argv:
+        if '--install' in sys.argv:
+            install_agent()
+            sys.exit(0)
+        elif '--uninstall' in sys.argv:
+            uninstall_agent()
+            sys.exit(0)
+        elif '--status' in sys.argv:
+            print_agent_status()
+            sys.exit(0)
+        elif '--version' in sys.argv:
+            print("RemoteMM Enterprise Agent v4.2.0-LTS")
+            sys.exit(0)
+        elif '--chat-ui' in sys.argv:
             run_chat_ui()
             sys.exit(0)
         elif '--server' in sys.argv:

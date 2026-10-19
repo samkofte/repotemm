@@ -416,6 +416,21 @@ wss.on('connection', (ws, req) => {
   const triggerDeployAndConnect = async (reasonMsg) => {
     if (hasAttemptedPush || isCancelled) return;
     hasAttemptedPush = true;
+
+    if (operatorRole === 'AUDITOR') {
+      sendErrorToConsole(ws, 'ERR_PERMISSION_DENIED', 'Erişim Engellendi: AUDITOR rolü hedef makineye uzaktan ajan yükleyemez.');
+      auditLogger.logAction({
+        tenantId: 'tenant_default',
+        operatorId: username,
+        targetHost,
+        actionType: 'AGENT_DEPLOY_BLOCKED',
+        parameters: { role: operatorRole },
+        status: 'FAILED',
+        errorMsg: 'Permission denied: AUDITOR is strictly read-only.'
+      });
+      return;
+    }
+
     console.log(`[Gateway] ${reasonMsg} -> Running Remote Push Deployment on ${targetHost}...`);
     sendProgressToConsole(ws, reasonMsg);
 
@@ -431,6 +446,14 @@ wss.on('connection', (ws, req) => {
       });
 
       if (deployRes.success) {
+        auditLogger.logAction({
+          tenantId: 'tenant_default',
+          operatorId: username,
+          targetHost,
+          actionType: 'AGENT_REMOTE_PUSH_DEPLOYED',
+          parameters: { role: operatorRole, port: targetPort },
+          status: 'SUCCESS'
+        });
         sendProgressToConsole(ws, `Agent başarıyla hazırlandı! Ekrana bağlanılıyor...`);
         setTimeout(() => {
           if (!isCancelled) tryConnect();

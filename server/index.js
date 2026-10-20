@@ -454,7 +454,10 @@ app.post('/api/fleet/status', async (req, res) => {
   await Promise.all(hosts.map(async (h) => {
     const start = Date.now();
     const port = parseInt(h.port || '6129', 10);
-    const ip = h.ip;
+    let ip = h.ip;
+    if (ip === '127.0.0.1' || ip === 'localhost') {
+      ip = 'host.docker.internal';
+    }
     const online = await checkPortOpen(ip, port, 1000);
     const latency = Date.now() - start;
     results[h.id || ip] = {
@@ -751,7 +754,10 @@ export function broadcastOtaRelease(release) {
 
 wss.on('connection', (ws, req) => {
   const params = new URLSearchParams(req.url.replace('/?', ''));
-  const targetHost = params.get('host') || '127.0.0.1';
+  let targetHost = params.get('host') || 'host.docker.internal';
+  if (targetHost === '127.0.0.1' || targetHost === 'localhost') {
+    targetHost = 'host.docker.internal';
+  }
   const targetPort = parseInt(params.get('port') || '6129', 10);
   const domain = params.get('domain') || 'WORKGROUP';
   let username = params.get('username') || 'Administrator';

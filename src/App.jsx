@@ -1150,20 +1150,52 @@ export default function App() {
     setTimeout(() => setCopiedCode(false), 2200);
   };
 
-  // Flatten and deduplicate hosts for fleet stats & filters
+  // Flatten and deduplicate hosts for fleet stats & filters (Merges Central Registry + Local Storage)
   const allHosts = React.useMemo(() => {
     const seen = new Set();
     const unique = [];
+
+    // 1. Gateway Central Registry'den gelen dinamik iş istasyonları & sunucular
+    for (const dev of (registeredDevices || [])) {
+      const devId = dev.id || dev.hwid || `dev-${dev.hostname}`;
+      const hostname = dev.hostname || 'İş İstasyonu';
+      const port = dev.port || (hostname === 'FINANS-PC01' ? '6130' : hostname === 'IK-PC02' ? '6131' : hostname === 'ARGE-CAD03' ? '6132' : '6129');
+      const isRecent = dev.lastSeen && (Date.now() - dev.lastSeen < 60000);
+
+      if (!seen.has(devId) && !seen.has(hostname)) {
+        seen.add(devId);
+        seen.add(hostname);
+        unique.push({
+          id: devId,
+          name: hostname,
+          ip: dev.primaryIp || '127.0.0.1',
+          port: port.toString(),
+          domain: 'WORKGROUP',
+          user: dev.telemetry?.activeUser || 'Administrator',
+          pass: '',
+          os: dev.osName || 'Windows 11 Enterprise',
+          cpu: dev.cpuModel || 'Intel / AMD Multi-Core',
+          ram: dev.totalRamMb ? `${Math.round(dev.totalRamMb / 1024)} GB` : '16 GB',
+          agentVersion: dev.agentVersion || 'v5.1',
+          status: isRecent ? 'ONLINE' : 'OFFLINE',
+          telemetry: dev.telemetry || {},
+          fromRegistry: true
+        });
+      }
+    }
+
+    // 2. Kullanıcının yerel tarayıcısında kayıtlı makineler
     for (const group of savedHosts) {
       for (const h of (group.hosts || [])) {
-        if (!seen.has(h.id)) {
+        if (!seen.has(h.id) && !seen.has(h.name)) {
           seen.add(h.id);
+          seen.add(h.name);
           unique.push(h);
         }
       }
     }
     return unique;
-  }, [savedHosts]);
+  }, [savedHosts, registeredDevices]);
 
   const filteredHosts = allHosts.filter(h => {
     const matchesSearch =
@@ -1186,7 +1218,7 @@ export default function App() {
   const [isLivePreviewEnabled, setIsLivePreviewEnabled] = useState(true);
   const [isPollingFleet, setIsPollingFleet] = useState(false);
 
-  const onlineCount = allHosts.filter(h => hostStatuses[h.id]?.online).length;
+  const onlineCount = allHosts.filter(h => hostStatuses[h.id]?.online || h.status === 'ONLINE').length;
   const offlineCount = allHosts.length - onlineCount;
 
   const pollFleetStatus = async (hostsToPoll = allHosts, fetchSnaps = isLivePreviewEnabled) => {
@@ -2767,10 +2799,11 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredHosts.map((h, idx) => {
                 const status = hostStatuses[h.id];
-                const isOnline = Boolean(status?.online);
+                const regDev = registeredDevices.find(d => d.id === h.id || d.hwid === h.id || d.primaryIp === h.ip || d.hostname?.toLowerCase() === h.name?.toLowerCase());
+                const isRecentHeartbeat = Boolean(regDev && regDev.lastSeen && (Date.now() - regDev.lastSeen < 60000));
+                const isOnline = Boolean(status?.online || h.status === 'ONLINE' || isRecentHeartbeat);
                 const snap = hostSnapshots[h.id];
-                const regDev = registeredDevices.find(d => d.primaryIp === h.ip || d.hostname?.toLowerCase() === h.name?.toLowerCase());
-                const telem = regDev?.telemetry;
+                const telem = regDev?.telemetry || h.telemetry;
 
                 return (
 

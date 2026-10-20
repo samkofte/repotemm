@@ -33,7 +33,8 @@ function checkPortOpen(host, port, timeout = 1200) {
     s.once('timeout', () => { s.destroy(); resolve(false); });
     s.once('error', () => { s.destroy(); resolve(false); });
     try {
-      s.connect(port, host);
+      const target = (host === '127.0.0.1' || host === 'localhost') ? 'host.docker.internal' : host;
+      s.connect(port, target);
     } catch (e) {
       resolve(false);
     }

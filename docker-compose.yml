@@ -10,6 +10,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./server:/app/server:ro
+      - ./dist:/app/dist:ro
       - ./scripts:/app/scripts:ro
       - ./public:/app/public:ro
     environment:

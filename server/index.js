@@ -376,12 +376,19 @@ const thumbnailCache = new Map();
 
 // Tekil sunucu ekran anlik goruntusu (JSON Base64)
 app.get('/api/fleet/snapshot', async (req, res) => {
-  const host = req.query.host;
+  let host = req.query.host;
+  const rawHost = host;
   const port = parseInt(req.query.port || '6129', 10);
   if (!host) return res.status(400).json({ error: 'host parametresi gerekli' });
 
-  // 3 saniyelik onbellek kontrolu (veya aktif canli yayindaysa dogrudan bellekten dondur)
-  const cached = thumbnailCache.get(host) || thumbnailCache.get(`${host}:${port}`);
+  if (host === '127.0.0.1' || host === 'localhost') {
+    host = 'host.docker.internal';
+  }
+
+  // 3.5 saniyelik onbellek kontrolu (once portlu anahtari ara; ayni IP'de coklu workstation varsa karismasin)
+  const cached = thumbnailCache.get(`${host}:${port}`) || 
+                 thumbnailCache.get(`${rawHost}:${port}`) || 
+                 (port === 6129 ? (thumbnailCache.get(host) || thumbnailCache.get(rawHost)) : null);
   if (cached && (Date.now() - cached.timestamp < 3500)) {
     return res.json({ success: true, online: true, ...cached });
   }
@@ -404,6 +411,9 @@ app.get('/api/fleet/snapshot', async (req, res) => {
         timestamp: Date.now()
       };
       thumbnailCache.set(host, entry);
+      thumbnailCache.set(rawHost, entry);
+      thumbnailCache.set(`${host}:${port}`, entry);
+      thumbnailCache.set(`${rawHost}:${port}`, entry);
       return res.json({ success: true, online: true, host, ...entry });
     } else {
       return res.json({ success: false, online: true, host, error: 'Ekran görüntüsü alınamadı' });
@@ -415,11 +425,18 @@ app.get('/api/fleet/snapshot', async (req, res) => {
 
 // Dogrudan binary JPEG gorsel donduren endpoint (HTML <img> etiketleri icin)
 app.get('/api/fleet/thumbnail', async (req, res) => {
-  const host = req.query.host;
+  let host = req.query.host;
+  const rawHost = host;
   const port = parseInt(req.query.port || '6129', 10);
   if (!host) return res.status(400).send('host parametresi gerekli');
 
-  const cached = thumbnailCache.get(host);
+  if (host === '127.0.0.1' || host === 'localhost') {
+    host = 'host.docker.internal';
+  }
+
+  const cached = thumbnailCache.get(`${host}:${port}`) || 
+                 thumbnailCache.get(`${rawHost}:${port}`) || 
+                 (port === 6129 ? (thumbnailCache.get(host) || thumbnailCache.get(rawHost)) : null);
   if (cached && (Date.now() - cached.timestamp < 8000) && cached.frame) {
     res.setHeader('Content-Type', 'image/jpeg');
     return res.send(Buffer.from(cached.frame, 'base64'));
@@ -432,14 +449,19 @@ app.get('/api/fleet/thumbnail', async (req, res) => {
 
   const frameData = await grabSingleFrame(host, port, 3000);
   if (frameData && frameData.frame) {
-    thumbnailCache.set(host, {
+    const entry = {
       frame: frameData.frame,
+      snapshot: frameData.frame,
       user: frameData.user,
       hostname: frameData.hostname,
       width: frameData.width,
       height: frameData.height,
       timestamp: Date.now()
-    });
+    };
+    thumbnailCache.set(host, entry);
+    thumbnailCache.set(rawHost, entry);
+    thumbnailCache.set(`${host}:${port}`, entry);
+    thumbnailCache.set(`${rawHost}:${port}`, entry);
     res.setHeader('Content-Type', 'image/jpeg');
     return res.send(Buffer.from(frameData.frame, 'base64'));
   }
@@ -929,6 +951,12 @@ wss.on('connection', (ws, req) => {
                   };
                   thumbnailCache.set(targetHost, snapEntry);
                   thumbnailCache.set(`${targetHost}:${targetPort}`, snapEntry);
+                  if (targetHost === 'host.docker.internal') {
+                    thumbnailCache.set('127.0.0.1', snapEntry);
+                    thumbnailCache.set('localhost', snapEntry);
+                    thumbnailCache.set(`127.0.0.1:${targetPort}`, snapEntry);
+                    thumbnailCache.set(`localhost:${targetPort}`, snapEntry);
+                  }
                 }
               } catch (_) {}
             } else if (line.includes('"HANDSHAKE_ACK"')) {

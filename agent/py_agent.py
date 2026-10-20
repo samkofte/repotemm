@@ -591,7 +591,13 @@ kernel32.GlobalAlloc.restype = ctypes.c_void_p
 def get_clipboard_text():
     """Reads current Unicode text from Windows clipboard."""
     try:
-        if not user32.OpenClipboard(None):
+        opened = False
+        for _ in range(5):
+            if user32.OpenClipboard(None):
+                opened = True
+                break
+            time.sleep(0.01)
+        if not opened:
             return None
         hData = user32.GetClipboardData(CF_UNICODETEXT)
         if not hData:
@@ -617,7 +623,13 @@ def set_clipboard_text(text):
     if len(text) > 65536:
         text = text[:65536]
     try:
-        if not user32.OpenClipboard(None):
+        opened = False
+        for _ in range(5):
+            if user32.OpenClipboard(None):
+                opened = True
+                break
+            time.sleep(0.01)
+        if not opened:
             return False
         user32.EmptyClipboard()
         encoded = (text + '\0').encode('utf-16le')

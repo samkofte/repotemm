@@ -5,6 +5,7 @@ import cors from 'cors';
 import net from 'net';
 import os from 'os';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { pushDeployAgent } from './deployer.js';
@@ -22,6 +23,20 @@ const PORT = process.env.PORT || 3001;
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Dinamik install.ps1: Baglanan istemcinin Host basligina gore $ServerIp adresini otomatik enjekte et
+app.get('/install.ps1', (req, res) => {
+  const filePath = path.join(__dirname, '..', 'public', 'install.ps1');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('# install.ps1 not found');
+  }
+  let content = fs.readFileSync(filePath, 'utf8');
+  const serverHost = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3001';
+  content = content.replace(/\$ServerIp\s*=\s*['"][^'"]*['"]/, `$ServerIp = '${serverHost}'`);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(content);
+});
+
 // EXE ve diger public dosyalari HTTP ile sun
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/scripts', express.static(path.join(__dirname, '..', 'scripts')));
@@ -537,13 +552,21 @@ export function getBestLocalIp(targetHost = '') {
 app.get('/api/setup-command', (req, res) => {
   const port = req.query.port || 6129;
   const targetHost = req.query.target || '';
-  const localIp = getBestLocalIp(targetHost);
+  
+  const hostHeader = req.headers['x-forwarded-host'] || req.headers.host;
+  let serverHost;
+  if (hostHeader) {
+    serverHost = hostHeader;
+  } else {
+    const localIp = getBestLocalIp(targetHost);
+    serverHost = `${localIp}:3001`;
+  }
 
-  const downloadUrl = `http://${localIp}:3001/RemoteMM_Agent.exe`;
-  const cmd = `powershell -ExecutionPolicy Bypass -Command "irm http://${localIp}:3001/install.ps1 | iex"`;
-  const gpoCmd = `powershell -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; & (irm http://${localIp}:3001/scripts/deploy-gpo.ps1) -GatewayServer 'http://${localIp}:3001'"`;
-  const batchUrl = `http://${localIp}:3001/scripts/install-agent.bat`;
-  const verifyUrl = `http://${localIp}:3001/scripts/verify-agent.ps1`;
+  const downloadUrl = `http://${serverHost}/RemoteMM_Agent.exe`;
+  const cmd = `powershell -ExecutionPolicy Bypass -Command "irm http://${serverHost}/install.ps1 | iex"`;
+  const gpoCmd = `powershell -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; & (irm http://${serverHost}/scripts/deploy-gpo.ps1) -GatewayServer 'http://${serverHost}'"`;
+  const batchUrl = `http://${serverHost}/scripts/install-agent.bat`;
+  const verifyUrl = `http://${serverHost}/scripts/verify-agent.ps1`;
 
   res.json({
     cmd,
@@ -551,7 +574,7 @@ app.get('/api/setup-command', (req, res) => {
     batchUrl,
     verifyUrl,
     downloadUrl,
-    serverIp: localIp,
+    serverIp: serverHost.split(':')[0],
     agentVersion: CURRENT_AGENT_VERSION
   });
 });

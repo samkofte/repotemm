@@ -1,5 +1,5 @@
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$ServerIp = '172.17.128.1:3001'
+$ServerIp = 'localhost:3001'
 $RemoteDir = 'C:\RemoteMM'
 $RemoteExe = "$RemoteDir\RemoteMM_Agent.exe"
 

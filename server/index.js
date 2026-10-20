@@ -788,8 +788,30 @@ wss.on('connection', (ws, req) => {
   let isCancelled = false;
   let hasAttemptedPush = false;
   let hasAttemptedUpgrade = false;
+  let hasSentStreamActive = false;
   let tcpClient = new net.Socket();
   let buffer = '';
+
+  const sendDiag = (step, status, message, details = {}) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'DIAGNOSTIC_EVENT',
+        timestamp: Date.now(),
+        host: targetHost,
+        port: targetPort,
+        step,
+        status, // 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR'
+        message,
+        details
+      }));
+    }
+  };
+
+  sendDiag('WS_BRIDGE', 'SUCCESS', `Gateway WebSocket köprüsü aktif (${targetHost}:${targetPort}).`, {
+    operator: username,
+    role: operatorRole,
+    consent: requireConsent
+  });
 
   const triggerDeployAndConnect = async (reasonMsg) => {
     if (hasAttemptedPush || isCancelled) return;
@@ -854,6 +876,7 @@ wss.on('connection', (ws, req) => {
     }
     tcpClient = new net.Socket();
     tcpClient.setTimeout(4000);
+    sendDiag('TCP_CONNECT', 'INFO', `Hedef makine (${targetHost}:${targetPort}) TCP soketine bağlanılıyor...`);
 
     tcpClient.connect(targetPort, targetHost, () => {
       if (isCancelled) {
@@ -865,6 +888,8 @@ wss.on('connection', (ws, req) => {
       tcpClient.setNoDelay(true);
       isConnected = true;
       console.log(`[Gateway] Connected directly to Agent on ${targetHost}:${targetPort}`);
+      sendDiag('TCP_CONNECT', 'SUCCESS', `Hedef makine (${targetHost}:${targetPort}) TCP bağlantısı açıldı.`);
+      sendDiag('HANDSHAKE', 'INFO', 'RMM2 Handshake paketi iletildi, ajan doğrulaması bekleniyor...');
     });
 
     let consecutiveDrops = 0;
@@ -890,10 +915,21 @@ wss.on('connection', (ws, req) => {
           if (line.charCodeAt(0) === 123) {
             if (line.includes('"SCREEN_FRAME"')) {
               isFrame = true;
+              if (!hasSentStreamActive) {
+                hasSentStreamActive = true;
+                sendDiag('STREAM', 'SUCCESS', 'Canlı masaüstü video akış motoru aktif (1280x720, 30-60 FPS).');
+              }
             } else if (line.includes('"HANDSHAKE_ACK"')) {
               const parsed = JSON.parse(line);
               const remoteVer = parsed.agentVersion || 'v1.0';
               console.log(`[Gateway] Agent Handshake ACK: Remote version "${remoteVer}" connected on ${targetHost}:${targetPort}`);
+              sendDiag('HANDSHAKE', 'SUCCESS', `Ajan doğrulandı: ${remoteVer} (${parsed.hostname || targetHost})`, {
+                agentVersion: remoteVer,
+                os: parsed.os,
+                hostname: parsed.hostname,
+                monitors: parsed.monitors
+              });
+              sendDiag('STREAM', 'INFO', 'Canlı masaüstü ekran akışı başlatılıyor...');
               
               // Register device in Central Enterprise Registry
               registry.registerOrAuthenticate({
@@ -1025,7 +1061,35 @@ wss.on('connection', (ws, req) => {
     if (err && err.code === 'ENOTFOUND') code = 'ERR_HOST_NOT_FOUND';
     if (err && err.code === 'ETIMEDOUT') code = 'ERR_CONNECTION_TIMED_OUT';
 
-    sendErrorToConsole(ws, code, `Hedef makineye (${targetHost}:${targetPort}) bağlanılamadı. IP adresi ve Güvenlik Duvarı 6129 portunu kontrol edin.`);
+    const possibleCauses = [
+      code === 'ERR_CONNECTION_REFUSED'
+        ? `Hedef makinede (${targetHost}:${targetPort}) çalışan RemoteMM Agent bulunamadı (port dinlenmiyor).`
+        : code === 'ERR_CONNECTION_TIMED_OUT'
+        ? `Ağ zaman aşımı (4000ms): Hedef makine (${targetHost}) yanıt vermedi veya Güvenlik Duvarı ${targetPort} portunu engelliyor.`
+        : `Hedef makine (${targetHost}) yerel ağda çözümlenemedi veya çevrimdışı.`
+    ];
+
+    const remediationSteps = [
+      `Hedef makinede "RemoteMM_Agent.exe" servisinin çalıştığını doğrulayın.`,
+      `Windows Güvenlik Duvarı üzerinde ${targetPort} TCP gelen (Inbound) kuralını kontrol edin.`,
+      `Makine kapalı veya uykuda ise "Wake-on-LAN ile Aç" seçeneğiyle uyandırmayı deneyin.`
+    ];
+
+    sendDiag('TCP_CONNECT', 'ERROR', `Hedef makineye (${targetHost}:${targetPort}) bağlanılamadı: ${code}`, {
+      code,
+      systemError: err ? err.message : null,
+      failingStep: 'TCP_CONNECT',
+      possibleCauses,
+      remediationSteps
+    });
+
+    sendErrorToConsole(ws, code, `Hedef makineye (${targetHost}:${targetPort}) bağlanılamadı. IP adresi ve Güvenlik Duvarı ${targetPort} portunu kontrol edin.`, {
+      targetHost,
+      targetPort,
+      failingStep: 'TCP_CONNECT',
+      possibleCauses,
+      remediationSteps
+    });
   };
 
   ws.on('message', (message) => {
@@ -1146,12 +1210,13 @@ function sendProgressToConsole(ws, message) {
   }
 }
 
-function sendErrorToConsole(ws, errorCode, errorMessage) {
-  if (ws.readyState === WebSocket.OPEN) {
+function sendErrorToConsole(ws, errorCode, errorMessage, details = {}) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       type: 'CONNECTION_ERROR',
       errorCode,
       errorMessage,
+      details,
       timestamp: Date.now()
     }));
   }

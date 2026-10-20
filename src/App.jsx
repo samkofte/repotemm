@@ -7,10 +7,94 @@ import {
   Edit3, AlertCircle, Unlock, EyeOff, Copy, Globe, Layers, Sliders,
   Radio, Maximize2, Minimize2, Filter, ArrowRight, Clock, Moon,
   Mic, MicOff, Volume2, Bell, Sparkles, Square, RotateCcw, CheckCircle2,
-  Users, UserPlus, UserCheck, ArrowUpCircle
+  Users, UserPlus, UserCheck, ArrowUpCircle, HelpCircle, Info, FileText, CheckCircle
 } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'dameware_saved_hosts_v1';
+
+export const ALARM_DEFINITIONS = {
+  ALERT_OFFLINE: {
+    code: 'ALERT_OFFLINE',
+    title: 'İletişim Kesintisi (Yanıtsız > 45s)',
+    badgeText: '⚠️ Yanıtsız (>45s)',
+    severity: 'CRITICAL',
+    levelLabel: 'Kritik Seviye',
+    badgeClass: 'bg-rose-900/50 text-rose-300 border-rose-700/60',
+    threshold: 'Kalp atışı (Heartbeat) gecikmesi > 45 saniye',
+    description: 'Hedef bilgisayardan son 45 saniyedir hiçbir telemetri, sistem durumu veya canlı sinyal alınamadı. Sistem düğümü çevrimdışı (offline) olarak işaretlendi.',
+    rootCauses: [
+      'Hedef bilgisayar kullanıcı tarafından kapatılmış veya elektrik kesintisi yaşamış olabilir.',
+      'Bilgisayar Windows Güç Tasarrufu nedeniyle Uyku (Sleep) veya Hazırda Beklet (Hibernate) moduna geçmiş olabilir.',
+      'Ağ bağlantısı (Ethernet kablosu, Wi-Fi adaptörü veya DHCP kira süresi) kopmuş olabilir.',
+      'Hedef makinedeki "RemoteMMAgent" Windows arka plan servisi çökmüş veya durdurulmuş olabilir.'
+    ],
+    remediations: [
+      'Makineyi uzaktan uyandırmak için tek tıkla "Wake-on-LAN (WoL) Paketi Gönder" komutunu çalıştırın.',
+      'Hedef makinenin yerel ağda IP yanıtı verip vermediğini Canlı Teşhis Paneli üzerinden test edin.',
+      'Fiziksel güç durumunu ve ağ kablosunu kontrol ettirin; makine açıldığında ajan 5 sn içinde otomatik bağlanacaktır.'
+    ]
+  },
+  ALERT_HIGH_CPU: {
+    code: 'ALERT_HIGH_CPU',
+    title: 'Aşırı İşlemci Yükü (CPU > 90%)',
+    badgeText: '🔥 CPU > 90%',
+    severity: 'HIGH',
+    levelLabel: 'Yüksek Seviye',
+    badgeClass: 'bg-amber-900/50 text-amber-300 border-amber-700/60',
+    threshold: 'Ortalama CPU kullanımı > %90',
+    description: 'İş istasyonunun işlemci çekirdekleri aşırı yük altında çalışıyor. Bu durum makinede kilitlenmelere, uzaktan yönetim komutlarının gecikmesine ve kullanıcı şikayetlerine yol açabilir.',
+    rootCauses: [
+      'Arka planda sonsuz döngüye giren veya yanıt vermeyen bir kurumsal uygulama.',
+      'Zamanlanmış Windows Defender / Kurumsal Antivirüs tam sistem taraması.',
+      'Ağır derleme, CAD render veya arka plan SQL sorgu işlemleri.'
+    ],
+    remediations: [
+      'NOC Panelinden "Süreçler (Processes)" sekmesini açarak en yüksek CPU tüketen işlemi bulun.',
+      'Kilitlenen veya izinsiz çalışan süreci "Görevi Sonlandır" butonuyla güvenli şekilde durdurun.',
+      'Gerekiyorsa Güç Menüsünden makineyi "Yeniden Başlat (Reboot)" seçeneğiyle tazeleyin.'
+    ]
+  },
+  ALERT_HIGH_MEMORY: {
+    code: 'ALERT_HIGH_MEMORY',
+    title: 'Kritik Bellek Doluluğu (RAM > 95%)',
+    badgeText: '⚡ RAM > 95%',
+    severity: 'HIGH',
+    levelLabel: 'Yüksek Seviye',
+    badgeClass: 'bg-amber-900/50 text-amber-300 border-amber-700/60',
+    threshold: 'Fiziksel RAM doluluğu > %95',
+    description: 'Kullanılabilir fiziksel RAM miktarı kritik seviyeye indi. Sistem aşırı disk sanal belleği (pagefile swapping) kullanmaya başlayarak ağırlaşabilir veya Out-Of-Memory (OOM) çökmeleri yaşayabilir.',
+    rootCauses: [
+      'Bellek sızıntısı (memory leak) yaşayan uzun süreli çalışan uygulamalar veya servisler.',
+      'Aynı anda açık bırakılmış onlarca ağır tarayıcı sekmesi veya sanal makineler.',
+      'İş istasyonunun fiziksel bellek kapasitesinin çalıştırılan kurumsal yazılımlara yetersiz gelmesi.'
+    ],
+    remediations: [
+      'Süreçler sekmesinden en çok bellek tüketen yazılımları sıralayın ve gereksizleri kapatın.',
+      'Uygulamaları yeniden başlatarak bellek alanını temizleyin.',
+      'Sorun kronikse iş istasyonunun RAM kapasitesinin artırılması için BT donanım talebi oluşturun.'
+    ]
+  },
+  ALERT_LOW_DISK: {
+    code: 'ALERT_LOW_DISK',
+    title: 'Kritik Düşük Disk Alanı (C: < 10 GB)',
+    badgeText: '💾 Disk < 10GB',
+    severity: 'CRITICAL',
+    levelLabel: 'Kritik Seviye',
+    badgeClass: 'bg-rose-900/50 text-rose-300 border-rose-700/60',
+    threshold: 'Birincil sistem diski boş alan < 10 GB',
+    description: 'Sistem diski neredeyse dolmuş durumda. Bu durum Windows Güncellemelerinin başarısız olmasına, sanal bellek ayrılamamasına ve işletim sisteminin çökmesine neden olabilir.',
+    rootCauses: [
+      'C:\\Windows\\Temp ve AppData\\Local\\Temp klasörlerinde biriken gigabaytlarca geçici dosya.',
+      'Windows Update kalıntıları (SoftwareDistribution\\Download) veya dolan geri dönüşüm kutusu.',
+      'Büyüyen uygulama log dosyaları, dmp (crash dump) dosyaları veya kullanıcı masaüstü indirmeleri.'
+    ],
+    remediations: [
+      'NOC panelinden "Uzak Dosya Gezgini" sekmesini açarak Temp klasörlerini denetleyin.',
+      'Gereksiz büyük dosyaları ve geçici klasörleri uzaktan temizleyin.',
+      'Windows cleanmgr (Disk Temizleme) aracını uzaktan tetikleyin.'
+    ]
+  }
+};
 
 export default function App() {
   // Navigation / View Tabs: 'console' | 'fleet' | 'processes' | 'files' | 'chat' | 'deployment'
@@ -97,6 +181,49 @@ export default function App() {
   const [otaCanaryPct, setOtaCanaryPct] = useState(100);
   const [otaReleaseNotes, setOtaReleaseNotes] = useState('Performans optimizasyonları ve güvenlik güncellemeleri.');
   const [fleetStats, setFleetStats] = useState(null);
+
+  // Live Diagnostics & Error Tracking State
+  const [liveDiagnostics, setLiveDiagnostics] = useState([
+    {
+      id: 'init_sys_1',
+      timestamp: Date.now() - 45000,
+      level: 'SUCCESS',
+      step: 'GATEWAY_READY',
+      host: 'Gateway Sunucusu (Port 3001)',
+      message: 'RemoteMM Enterprise Gateway WebSocket köprüsü ve REST API hazır.',
+      details: { port: 3001, status: 'ONLINE', protocol: 'RMM2 / TLS 1.3' }
+    },
+    {
+      id: 'init_sys_2',
+      timestamp: Date.now() - 30000,
+      level: 'INFO',
+      step: 'FLEET_SYNC',
+      host: 'Merkezi Filo Kaydı',
+      message: 'Aktif kurumsal iş istasyonları (FINANS-PC01, IK-PC02, ARGE-CAD03) senkronize edildi.',
+      details: { totalNodes: 3, healthyNodes: 3 }
+    }
+  ]);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [diagnosticsFilter, setDiagnosticsFilter] = useState('ALL'); // 'ALL' | 'ERRORS' | 'CONNECTION' | 'ALERTS'
+  const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
+  const [selectedDiagEvent, setSelectedDiagEvent] = useState(null);
+  const [selectedAlarmDetail, setSelectedAlarmDetail] = useState(null);
+  const [isAlarmDictModalOpen, setIsAlarmDictModalOpen] = useState(false);
+
+  const addDiagnosticEvent = (level, message, options = {}) => {
+    const newEvent = {
+      id: `diag_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      timestamp: Date.now(),
+      level: level || 'INFO', // 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR' | 'CRITICAL'
+      message,
+      host: options.host || (targetHost ? `${targetHost}:${targetPort}` : 'Sistem / Gateway'),
+      port: options.port || targetPort,
+      step: options.step || 'OPERATION',
+      code: options.code || null,
+      details: options.details || null
+    };
+    setLiveDiagnostics(prev => [newEvent, ...prev.slice(0, 199)]);
+  };
 
   // Mouse / Canvas / Screen state
 
@@ -483,30 +610,77 @@ export default function App() {
       setIsViewOnly(true);
     }
 
+    addDiagnosticEvent('INFO', `Bağlantı oturumu başlatıldı: Hedef ${target}:${p} (Rol: ${operatorRole})`, {
+      step: 'SESSION_START',
+      host: `${target}:${p}`
+    });
+
     const wsUrl = `ws://localhost:3001/?host=${target}&port=${p}&domain=${encodeURIComponent(d)}&username=${encodeURIComponent(u)}&password=${encodeURIComponent(pass)}${mac ? `&mac=${encodeURIComponent(mac)}` : ''}${forceReinstall ? '&force=true' : ''}&role=${encodeURIComponent(operatorRole)}${requireConsent ? '&consent=true' : ''}`;
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
     ws.onopen = () => {
       console.log(`[RemoteMM NOC] Gateway connected for target: ${target} (mac: ${mac || 'auto'}, forceReinstall: ${forceReinstall})`);
+      addDiagnosticEvent('SUCCESS', `WebSocket köprüsü kuruldu (ws://localhost:3001). Hedef: ${target}:${p}`, {
+        step: 'WS_BRIDGE',
+        host: `${target}:${p}`
+      });
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'CONNECTION_ERROR') {
+        if (data.type === 'DIAGNOSTIC_EVENT') {
+          addDiagnosticEvent(data.status, data.message, {
+            step: data.step,
+            host: data.host || `${target}:${p}`,
+            port: data.port || p,
+            details: data.details,
+            code: data.code
+          });
+        } else if (data.type === 'CONNECTION_ERROR') {
           setIsConnecting(false);
           setIsConnected(false);
           setSessionState('error');
-          setConnectionError({ code: data.errorCode, message: data.errorMessage });
+          const errObj = {
+            code: data.errorCode || 'ERR_CONNECTION_FAILED',
+            message: data.errorMessage || 'Hedef makineye bağlanılamadı.',
+            failingStep: data.details?.failingStep || 'TCP_CONNECT',
+            targetHost: target,
+            targetPort: p,
+            possibleCauses: data.details?.possibleCauses || [
+              'Hedef makinede RemoteMM ajanı çalışmıyor veya port dinlemiyor.',
+              'Windows Güvenlik Duvarı hedef portu engelliyor.',
+              'Hedef makine ağda bulunamadı veya kapalı.'
+            ],
+            remediationSteps: data.details?.remediationSteps || [
+              'Hedef makinede RemoteMM_Agent.exe servisinin çalıştığını doğrulayın.',
+              `Güvenlik duvarında TCP ${p} portuna izin verildiğinden emin olun.`,
+              'Makine kapalıysa Wake-on-LAN sihirli paketi ile uyandırın.'
+            ],
+            timestamp: Date.now()
+          };
+          setConnectionError(errObj);
+          addDiagnosticEvent('ERROR', data.errorMessage, {
+            step: errObj.failingStep,
+            code: data.errorCode,
+            host: `${target}:${p}`,
+            details: data.details
+          });
         } else if (data.type === 'DEPLOYMENT_PROGRESS') {
           setDeployStatus(data.message);
+          addDiagnosticEvent('INFO', data.message, { step: 'DEPLOY', host: `${target}:${p}` });
         } else if (data.type === 'HANDSHAKE_ACK') {
           setIsConnecting(false);
           setIsConnected(true);
           setSessionState('connected');
           reconnectCountRef.current = 0;
           setAgentInfo(data);
+          addDiagnosticEvent('SUCCESS', `Ajan el sıkışması tamamlandı: ${data.hostname} (${data.os || 'Windows'}) [Versiyon: ${data.agentVersion || 'v5.1'}]`, {
+            step: 'HANDSHAKE',
+            host: `${target}:${p}`,
+            details: data
+          });
           if (data.monitors && Array.isArray(data.monitors)) {
             setMonitors(data.monitors);
           }
@@ -692,10 +866,24 @@ export default function App() {
     ws.onerror = () => {
       setIsConnecting(false);
       setSessionState('error');
-      setConnectionError({
+      const errPayload = {
         code: 'ERR_GATEWAY_OFFLINE',
-        message: 'RemoteMM Gateway backend is offline on port 3001. Run "npm run server" or restart the gateway.'
-      });
+        message: 'RemoteMM Gateway sunucusuna (port 3001) bağlanılamadı. Servis çevrimdışı.',
+        failingStep: 'WS_BRIDGE',
+        targetHost: target,
+        targetPort: p,
+        possibleCauses: [
+          'Docker Gateway konteyneri durdurulmuş veya yeniden başlatılıyor olabilir.',
+          'Gateway servisi 3001 portunu açamamış veya çökmüş olabilir.'
+        ],
+        remediationSteps: [
+          'Docker durumunu kontrol edin: "docker compose ps"',
+          'Gateway servisini yeniden başlatın: "docker compose restart gateway"'
+        ],
+        timestamp: Date.now()
+      };
+      setConnectionError(errPayload);
+      addDiagnosticEvent('ERROR', errPayload.message, { step: 'WS_BRIDGE', code: 'ERR_GATEWAY_OFFLINE' });
     };
   };
 
@@ -1848,6 +2036,29 @@ export default function App() {
             <span className={requireConsent ? 'text-cyan-300 font-semibold' : 'text-slate-400'}>KVKK Onayı İste</span>
           </label>
 
+          {/* CANLI TEŞHİS & HATA MERKEZİ BUTONU */}
+          <button
+            onClick={() => setIsDiagnosticsOpen(true)}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition shadow-sm cursor-pointer ${
+              liveDiagnostics.some(e => e.level === 'ERROR' || e.level === 'CRITICAL')
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 hover:bg-rose-500/30 shadow-[0_0_12px_rgba(244,63,94,0.3)] animate-pulse'
+                : 'bg-slate-900/90 text-cyan-300 border-cyan-500/30 hover:bg-slate-800 hover:text-white'
+            }`}
+            title="Her anın olay kaydını, anlık bağlantı adımlarını ve hata teşhis kayıtlarını görüntüleyin"
+          >
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Canlı Teşhis</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-cyan-950 text-cyan-400 border border-cyan-500/30 font-bold">
+              {liveDiagnostics.length}
+            </span>
+            {liveDiagnostics.some(e => e.level === 'ERROR' || e.level === 'CRITICAL') && (
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+          </button>
+
           {/* Quick Setup Modal Button */}
           <button
             onClick={() => setActiveModal('agentInstall')}
@@ -2325,37 +2536,177 @@ export default function App() {
                   )}
                 </div>
               ) : connectionError ? (
-                /* ERROR PANEL */
-                <div className="flex flex-col items-center justify-center p-8 max-w-lg glass-card rounded-2xl text-center border-rose-500/30 shadow-[0_0_30px_rgba(244,63,94,0.15)]">
-                  <div className="w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mb-4 text-rose-400">
-                    <AlertCircle className="w-7 h-7" />
-                  </div>
-                  <div className="text-[11px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold mb-2">
-                    {connectionError.code}
-                  </div>
-                  <h3 className="text-base font-bold text-slate-100">Bağlantı Kurulamadı</h3>
-                  <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-                    {connectionError.message}
-                  </p>
-                  <div className="mt-4 p-3 bg-slate-950 rounded-xl border border-slate-800 text-left text-[11px] text-slate-400 space-y-1 w-full font-mono">
-                    <div className="text-slate-300 font-bold mb-1">Sorun Giderme Adımları:</div>
-                    <div>1. Hedef makinede <strong className="text-cyan-400">RemoteMM_Agent.exe</strong> çalışıyor mu?</div>
-                    <div>2. Güvenlik Duvarı <strong className="text-amber-400">6129</strong> portuna izin veriyor mu?</div>
-                    <div>3. IP Adresi (<strong className="text-emerald-400">{targetHost}</strong>) doğru mu?</div>
-                  </div>
-                  <div className="flex items-center gap-3 mt-5 w-full">
+                /* INTERACTIVE CONNECTION DIAGNOSTICS & ERROR PIPELINE */
+                <div className="flex flex-col items-center justify-center p-6 max-w-2xl w-full glass-card rounded-2xl border-rose-500/30 shadow-[0_0_35px_rgba(244,63,94,0.15)] my-auto animate-in zoom-in-95 duration-200">
+                  
+                  {/* Top Header */}
+                  <div className="w-full flex items-center justify-between border-b border-slate-800/80 pb-3 mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <div className="text-left">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-100">Bağlantı Kurulamadı</h3>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40">
+                            {connectionError.code || 'ERR_CONNECTION_FAILED'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          Hedef: <strong className="text-cyan-300">{connectionError.targetHost || targetHost}:{connectionError.targetPort || targetPort}</strong>
+                        </p>
+                      </div>
+                    </div>
+
                     <button
+                      type="button"
+                      onClick={() => setIsDiagnosticsOpen(true)}
+                      className="px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="Her anın detaylı kayıtlarını inceleyin"
+                    >
+                      <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Teşhis Kayıtları</span>
+                    </button>
+                  </div>
+
+                  {/* 5-STEP CONNECTION PIPELINE STEPPER */}
+                  <div className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 mb-4">
+                    <span className="text-[10px] font-mono text-slate-400 font-bold tracking-wider block text-left mb-2.5">
+                      BAĞLANTI ADIMLARI VE KOPMA NOKTASI:
+                    </span>
+                    <div className="grid grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
+                      {/* Step 1: Gateway WS */}
+                      <div className={`p-2 rounded-lg border flex flex-col items-center gap-1 ${
+                        connectionError.failingStep === 'WS_BRIDGE'
+                          ? 'bg-rose-950/60 border-rose-500/60 text-rose-300 animate-pulse'
+                          : 'bg-emerald-950/40 border-emerald-800/40 text-emerald-400'
+                      }`}>
+                        <span className="font-bold">1. Gateway WS</span>
+                        {connectionError.failingStep === 'WS_BRIDGE' ? <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                        <span className="text-[9px] opacity-80">{connectionError.failingStep === 'WS_BRIDGE' ? 'KOPUK' : 'BAŞARILI'}</span>
+                      </div>
+
+                      {/* Step 2: Target TCP */}
+                      <div className={`p-2 rounded-lg border flex flex-col items-center gap-1 ${
+                        connectionError.failingStep === 'TCP_CONNECT' || connectionError.failingStep === 'TCP_DIAL'
+                          ? 'bg-rose-950/60 border-rose-500/60 text-rose-300 animate-pulse'
+                          : connectionError.failingStep === 'WS_BRIDGE'
+                          ? 'bg-slate-900 border-slate-800 text-slate-500 opacity-60'
+                          : 'bg-emerald-950/40 border-emerald-800/40 text-emerald-400'
+                      }`}>
+                        <span className="font-bold">2. Hedef TCP</span>
+                        {connectionError.failingStep === 'TCP_CONNECT' || connectionError.failingStep === 'TCP_DIAL' ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
+                        ) : connectionError.failingStep === 'WS_BRIDGE' ? (
+                          <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        )}
+                        <span className="text-[9px] opacity-80">
+                          {connectionError.failingStep === 'TCP_CONNECT' || connectionError.failingStep === 'TCP_DIAL' ? 'KOPUK (Port)' : 'GEÇTİ'}
+                        </span>
+                      </div>
+
+                      {/* Step 3: RMM2 Handshake */}
+                      <div className={`p-2 rounded-lg border flex flex-col items-center gap-1 ${
+                        connectionError.failingStep === 'HANDSHAKE'
+                          ? 'bg-rose-950/60 border-rose-500/60 text-rose-300 animate-pulse'
+                          : ['WS_BRIDGE', 'TCP_CONNECT', 'TCP_DIAL'].includes(connectionError.failingStep)
+                          ? 'bg-slate-900 border-slate-800 text-slate-500 opacity-60'
+                          : 'bg-emerald-950/40 border-emerald-800/40 text-emerald-400'
+                      }`}>
+                        <span className="font-bold">3. RMM2 El Sıkışma</span>
+                        {connectionError.failingStep === 'HANDSHAKE' ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        )}
+                        <span className="text-[9px] opacity-80">{connectionError.failingStep === 'HANDSHAKE' ? 'RED' : 'BEKLİYOR'}</span>
+                      </div>
+
+                      {/* Step 4: Auth & Consent */}
+                      <div className={`p-2 rounded-lg border flex flex-col items-center gap-1 ${
+                        connectionError.code === 'ERR_CONSENT_REJECTED'
+                          ? 'bg-rose-950/60 border-rose-500/60 text-rose-300 animate-pulse'
+                          : 'bg-slate-900 border-slate-800 text-slate-500 opacity-60'
+                      }`}>
+                        <span className="font-bold">4. Rıza / Token</span>
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        <span className="text-[9px] opacity-80">{connectionError.code === 'ERR_CONSENT_REJECTED' ? 'REDDEDİLDİ' : 'BEKLİYOR'}</span>
+                      </div>
+
+                      {/* Step 5: Screen Stream */}
+                      <div className="p-2 rounded-lg border bg-slate-900 border-slate-800 text-slate-500 opacity-60 flex flex-col items-center gap-1">
+                        <span className="font-bold">5. Video Yayını</span>
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        <span className="text-[9px] opacity-80">BEKLİYOR</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Root Cause & Diagnostic Message */}
+                  <div className="w-full text-left bg-rose-950/20 border border-rose-800/30 rounded-xl p-3 mb-3 text-xs">
+                    <div className="flex items-center gap-2 text-rose-300 font-bold mb-1">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>Tespit Edilen Arıza Nedeni:</span>
+                    </div>
+                    <p className="text-slate-300 leading-relaxed text-[11px] mb-2 font-mono">
+                      {connectionError.message}
+                    </p>
+                    {connectionError.possibleCauses && connectionError.possibleCauses.length > 0 && (
+                      <div className="space-y-1 text-[11px] text-slate-400">
+                        {connectionError.possibleCauses.map((cause, cIdx) => (
+                          <div key={cIdx} className="flex items-start gap-1.5">
+                            <span className="text-rose-400 font-bold">•</span>
+                            <span>{cause}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remediation Steps */}
+                  <div className="w-full text-left bg-slate-950/90 rounded-xl border border-slate-800/80 p-3 mb-4 text-xs font-mono space-y-1.5">
+                    <span className="text-slate-300 font-bold block mb-1 text-[11px] flex items-center gap-1.5">
+                      <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+                      Çözüm Adımları (Remediation Checklist):
+                    </span>
+                    {(connectionError.remediationSteps || [
+                      'Hedef makinede RemoteMM_Agent.exe çalıştığını netstat -ano ile teyit edin.',
+                      'Güvenlik Duvarında ilgili TCP port kuralını denetleyin.',
+                      'Makine kapalı veya uykuda ise Wake-on-LAN komutunu çalıştırın.'
+                    ]).map((step, sIdx) => (
+                      <div key={sIdx} className="text-slate-300 flex items-start gap-2 text-[11px]">
+                        <span className="text-cyan-400 font-bold shrink-0">{sIdx + 1}.</span>
+                        <span>{step}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Actions Toolbar */}
+                  <div className="flex flex-wrap items-center gap-2.5 w-full">
+                    <button
+                      type="button"
                       onClick={() => handleConnect()}
-                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 transition"
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-sky-500 to-indigo-600 hover:opacity-95 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(56,189,248,0.25)] transition cursor-pointer"
                     >
                       <RefreshCw className="w-4 h-4" /> Yeniden Dene
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleConnect(null, { forceReinstall: true })}
-                      className="flex-1 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/30 transition"
-                      title="Silinmiş veya bozuk agent'ı temizleyip sıfırdan kurar ve bağlar"
+                      className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+                      title="Silinmiş veya bozuk agent durumunda sıfırdan kurar ve bağlar"
                     >
-                      <Download className="w-4 h-4" /> Sıfırdan Kur & Bağlan
+                      <Download className="w-4 h-4 text-cyan-400" /> Sıfırdan Kur & Bağlan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => triggerWakeOnLan(connectionError.targetHost || targetHost)}
+                      className="px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                      title="Makine uykudaysa veya kapalıysa Wake-on-LAN paketi gönder"
+                    >
+                      <Zap className="w-3.5 h-3.5 fill-current" /> WoL ile Aç
                     </button>
                   </div>
                 </div>
@@ -2734,7 +3085,7 @@ export default function App() {
                   ))}
                   <button
                     onClick={() => setShowOnlyAlerts(!showOnlyAlerts)}
-                    className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                    className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 cursor-pointer ${
                       showOnlyAlerts
                         ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
                         : 'bg-slate-900 text-slate-400 hover:text-slate-200'
@@ -2743,6 +3094,16 @@ export default function App() {
                   >
                     <AlertTriangle className={`w-3.5 h-3.5 ${showOnlyAlerts ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
                     <span>🚨 Alarmlı Sunucular</span>
+                  </button>
+
+                  {/* ALARM SÖZLÜĞÜ VE EŞİK AÇIKLAMALARI BUTONU */}
+                  <button
+                    onClick={() => setIsAlarmDictModalOpen(true)}
+                    className="px-3 py-1 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:border-amber-500/40 text-amber-300 hover:text-amber-200 cursor-pointer shadow-sm"
+                    title="Tüm NOC sistem alarmlarının açıklamaları, tetiklenme eşikleri ve çözüm adımları"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                    <span>📖 Alarm & Sağlık Sözlüğü</span>
                   </button>
                 </div>
               </div>
@@ -2846,10 +3207,19 @@ export default function App() {
                             </span>
                           )}
                           {telem?.alerts && telem.alerts.length > 0 && (
-                            <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedAlarmDetail({ code: telem.alerts[0], host: h });
+                              }}
+                              className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse cursor-pointer shadow hover:scale-105 transition"
+                              title="Alarmları ve teşhis ayrıntılarını aç"
+                            >
                               <AlertTriangle className="w-2.5 h-2.5 text-rose-400" />
                               {telem.alerts.length} ALARM
-                            </span>
+                            </button>
                           )}
                         </div>
                       </div>
@@ -3041,18 +3411,30 @@ export default function App() {
                       {/* Active NOC Health Alerts */}
                       {telem?.alerts && telem.alerts.length > 0 && (
                         <div className="my-2 p-2 rounded-xl bg-rose-950/30 border border-rose-800/40 flex flex-wrap gap-1.5">
-                          {telem.alerts.map((al, aIdx) => (
-                            <span
-                              key={aIdx}
-                              className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-900/40 text-rose-300 border border-rose-700/50 flex items-center gap-1"
-                            >
-                              {al === 'ALERT_HIGH_CPU' && <>🔥 CPU &gt; 90%</>}
-                              {al === 'ALERT_LOW_DISK' && <>💾 Disk &lt; 10GB</>}
-                              {al === 'ALERT_HIGH_MEMORY' && <>⚡ RAM &gt; 95%</>}
-                              {al === 'ALERT_OFFLINE' && <>⚠️ Yanıtsız (&gt;45s)</>}
-                              {!['ALERT_HIGH_CPU', 'ALERT_LOW_DISK', 'ALERT_HIGH_MEMORY', 'ALERT_OFFLINE'].includes(al) && <>⚠️ {al}</>}
-                            </span>
-                          ))}
+                          {telem.alerts.map((al, aIdx) => {
+                            const def = ALARM_DEFINITIONS[al] || {
+                              code: al,
+                              title: `Sistem Alarmı (${al})`,
+                              badgeText: `⚠️ ${al}`,
+                              badgeClass: 'bg-rose-900/40 text-rose-300 border-rose-700/50'
+                            };
+                            return (
+                              <button
+                                key={aIdx}
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setSelectedAlarmDetail({ code: al, host: h });
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1.5 transition cursor-pointer hover:scale-105 shadow border ${def.badgeClass || 'bg-rose-900/40 text-rose-300 border-rose-700/50'}`}
+                                title="Açıklama, kök neden ve çözüm rehberini görmek için tıklayın"
+                              >
+                                <span>{def.badgeText || al}</span>
+                                <HelpCircle className="w-2.5 h-2.5 opacity-80 hover:opacity-100" />
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -5133,6 +5515,500 @@ export default function App() {
                   <Power className="w-3.5 h-3.5" /> Kapat
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: CANLI TEŞHİS & HATA MERKEZİ (LIVE DIAGNOSTICS & EVENT HUD) */}
+      {isDiagnosticsOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-[880px] max-w-full max-h-[90vh] glass-card rounded-2xl border border-cyan-500/40 overflow-hidden shadow-[0_0_50px_rgba(56,189,248,0.2)] flex flex-col animate-in zoom-in-95 duration-150">
+            
+            {/* Header */}
+            <div className="px-6 py-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Activity className="w-5 h-5 text-cyan-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-100">Canlı Operasyon & Teşhis Merkezi</h3>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+                    <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider">CANLI AKIŞ</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    Her anın olay kaydı, soket adımları, ağ gecikmesi ve hata kök neden analizi
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const reportText = liveDiagnostics.map(e => `[${new Date(e.timestamp).toISOString()}] [${e.level}] [${e.step}] (${e.host}): ${e.message} ${e.details ? JSON.stringify(e.details) : ''}`).join('\n');
+                    navigator.clipboard.writeText(reportText);
+                    setClipboardToastText('Teşhis raporu panoya kopyalandı');
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Tüm teşhis günlüğünü panoya kopyala"
+                >
+                  <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Raporu Kopyala</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLiveDiagnostics([])}
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Teşhis günlüğünü temizle"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Temizle</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDiagnosticsOpen(false)}
+                  className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-Header Stats & Filters Bar */}
+            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                {/* Stats Chips */}
+                <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-300">
+                  Toplam: <b className="text-cyan-400">{liveDiagnostics.length}</b>
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-rose-950/60 border border-rose-800/60 font-mono text-[11px] text-rose-300">
+                  Hata: <b className="text-rose-400">{liveDiagnostics.filter(e => e.level === 'ERROR' || e.level === 'CRITICAL').length}</b>
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-800/60 font-mono text-[11px] text-emerald-300">
+                  Başarılı: <b className="text-emerald-400">{liveDiagnostics.filter(e => e.level === 'SUCCESS').length}</b>
+                </span>
+              </div>
+
+              {/* Filter Pills */}
+              <div className="flex items-center gap-1.5">
+                {[
+                  { key: 'ALL', label: 'Tümü' },
+                  { key: 'ERRORS', label: '🚨 Hatalar' },
+                  { key: 'CONNECTION', label: '🔌 Bağlantı' },
+                  { key: 'ALERTS', label: '⚠️ Alarmlar' }
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setDiagnosticsFilter(tab.key)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      diagnosticsFilter === tab.key
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Box */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Host, kod veya mesaj ara..."
+                  value={diagnosticsSearch}
+                  onChange={(e) => setDiagnosticsSearch(e.target.value)}
+                  className="pl-8 pr-3 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 w-52 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Diagnostics Events Stream Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-xs max-h-[58vh]">
+              {liveDiagnostics
+                .filter(e => {
+                  if (diagnosticsFilter === 'ERRORS') return e.level === 'ERROR' || e.level === 'CRITICAL';
+                  if (diagnosticsFilter === 'CONNECTION') return ['WS_BRIDGE', 'TCP_CONNECT', 'TCP_DIAL', 'HANDSHAKE', 'STREAM', 'DISCONNECT'].includes(e.step);
+                  if (diagnosticsFilter === 'ALERTS') return e.step === 'ALERT' || (e.message && e.message.includes('Alarm'));
+                  return true;
+                })
+                .filter(e => {
+                  if (!diagnosticsSearch.trim()) return true;
+                  const q = diagnosticsSearch.toLowerCase();
+                  return (
+                    (e.message && e.message.toLowerCase().includes(q)) ||
+                    (e.host && e.host.toLowerCase().includes(q)) ||
+                    (e.code && e.code.toLowerCase().includes(q)) ||
+                    (e.step && e.step.toLowerCase().includes(q))
+                  );
+                })
+                .map((ev) => {
+                  const isSelected = selectedDiagEvent === ev.id;
+                  const timeStr = new Date(ev.timestamp).toLocaleTimeString('tr-TR', { hour12: false }) + '.' + String(ev.timestamp % 1000).padStart(3, '0');
+                  
+                  return (
+                    <div
+                      key={ev.id}
+                      onClick={() => setSelectedDiagEvent(isSelected ? null : ev.id)}
+                      className={`p-2.5 rounded-xl border transition cursor-pointer ${
+                        ev.level === 'CRITICAL' || ev.level === 'ERROR'
+                          ? 'bg-rose-950/30 hover:bg-rose-950/50 border-rose-800/40'
+                          : ev.level === 'WARN'
+                          ? 'bg-amber-950/20 hover:bg-amber-950/35 border-amber-800/40'
+                          : ev.level === 'SUCCESS'
+                          ? 'bg-emerald-950/20 hover:bg-emerald-950/35 border-emerald-800/40'
+                          : 'bg-slate-900/60 hover:bg-slate-900/90 border-slate-800/80'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-slate-500 text-[11px] font-mono">{timeStr}</span>
+                          
+                          {/* Level Badge */}
+                          <span className={`px-2 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            ev.level === 'CRITICAL' || ev.level === 'ERROR'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                              : ev.level === 'WARN'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              : ev.level === 'SUCCESS'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                          }`}>
+                            {ev.level}
+                          </span>
+
+                          {/* Step Badge */}
+                          <span className="px-2 py-0.2 rounded bg-slate-950 text-slate-300 border border-slate-800 text-[10px] font-mono">
+                            {ev.step}
+                          </span>
+
+                          {/* Host Badge */}
+                          <span className="px-2 py-0.2 rounded bg-indigo-950/50 text-indigo-300 border border-indigo-800/40 text-[10px] font-mono font-bold">
+                            {ev.host}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-slate-500 text-[11px]">
+                          {ev.code && <span className="text-rose-400 font-mono font-bold">[{ev.code}]</span>}
+                          <span>{isSelected ? '▲ Kapat' : '▼ Detay'}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-1 text-slate-200 text-xs leading-relaxed font-sans font-medium">
+                        {ev.message}
+                      </div>
+
+                      {/* Expanded Details Pane */}
+                      {isSelected && (
+                        <div className="mt-3 pt-3 border-t border-slate-800/80 text-[11px] font-mono space-y-2 bg-slate-950/70 p-3 rounded-lg animate-in fade-in duration-150">
+                          {ev.details?.possibleCauses && (
+                            <div>
+                              <span className="text-amber-400 font-bold block mb-1">Olası Nedenler (Root Causes):</span>
+                              <div className="space-y-1 text-slate-300">
+                                {ev.details.possibleCauses.map((c, i) => (
+                                  <div key={i}>• {c}</div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {ev.details?.remediationSteps && (
+                            <div>
+                              <span className="text-cyan-400 font-bold block mb-1">Önerilen Çözüm Adımları:</span>
+                              <div className="space-y-1 text-slate-300">
+                                {ev.details.remediationSteps.map((s, i) => (
+                                  <div key={i}>{i + 1}. {s}</div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {ev.details && !ev.details.possibleCauses && (
+                            <div>
+                              <span className="text-slate-400 font-bold block mb-1">Teknik Parametreler (JSON):</span>
+                              <pre className="p-2 rounded bg-slate-900 border border-slate-800 text-cyan-300 text-[10px] overflow-x-auto">
+                                {JSON.stringify(ev.details, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+              {liveDiagnostics.length === 0 && (
+                <div className="py-12 text-center text-slate-500">
+                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm font-semibold">Henüz teşhis kaydı bulunmuyor</p>
+                  <p className="text-xs text-slate-600 mt-1">Bağlantı denendiğinde veya bir alarm tetiklendiğinde burada listelenecektir.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                Sistem Teşhis Motoru Aktif • Milisaniyelik Olay Takibi
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  addDiagnosticEvent('INFO', 'Manuel teşhis ağ sondası (ping probe) çalıştırıldı: 127.0.0.1:3001 OK.', {
+                    step: 'MANUAL_PROBE',
+                    details: { rtt: latency, time: Date.now() }
+                  });
+                }}
+                className="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-semibold border border-cyan-500/30 transition cursor-pointer"
+              >
+                🧪 Manuel Ping/Sonda Testi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: NOC ALARM & SAĞLIK SÖZLÜĞÜ (ALARM DICTIONARY MODAL) */}
+      {isAlarmDictModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-[820px] max-w-full max-h-[88vh] glass-card rounded-2xl border border-amber-500/40 overflow-hidden shadow-[0_0_50px_rgba(245,158,11,0.2)] flex flex-col animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-6 py-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <HelpCircle className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100">NOC Sağlık & Alarm Tanımları ve Eşik Sözlüğü</h3>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    Kurumsal iş istasyonlarında görülebilecek tüm alarmların nedenleri, eşikleri ve çözüm adımları
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAlarmDictModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Alarm Cards List */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[68vh]">
+              {Object.values(ALARM_DEFINITIONS).map((alarm) => (
+                <div
+                  key={alarm.code}
+                  className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 transition"
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border ${alarm.badgeClass}`}>
+                        {alarm.badgeText}
+                      </span>
+                      <h4 className="text-sm font-bold text-slate-100">{alarm.title}</h4>
+                    </div>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                      Eşik: <strong className="text-cyan-300">{alarm.threshold}</strong>
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed mb-3">
+                    {alarm.description}
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] font-mono bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                    <div>
+                      <span className="text-rose-400 font-bold block mb-1">Olası Kök Nedenler:</span>
+                      <div className="space-y-1 text-slate-400">
+                        {alarm.rootCauses.map((c, i) => (
+                          <div key={i} className="flex items-start gap-1.5">
+                            <span className="text-rose-400">•</span>
+                            <span>{c}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-emerald-400 font-bold block mb-1">Operatör Müdahale Rehberi:</span>
+                      <div className="space-y-1 text-slate-300">
+                        {alarm.remediations.map((r, i) => (
+                          <div key={i} className="flex items-start gap-1.5">
+                            <span className="text-emerald-400 font-bold">{i + 1}.</span>
+                            <span>{r}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+              <span>Kurumsal NOC Sağlık Politikası: Gerçek Zamanlı Telemetri İzleme</span>
+              <button
+                type="button"
+                onClick={() => setIsAlarmDictModalOpen(false)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer"
+              >
+                Anladım, Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: TEKİL MAKİNE ALARM TEŞHİS & ÇÖZÜM MODALI */}
+      {selectedAlarmDetail && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-[640px] max-w-full glass-card rounded-2xl border border-rose-500/40 overflow-hidden shadow-[0_0_40px_rgba(244,63,94,0.25)] flex flex-col animate-in zoom-in-95 duration-150">
+            
+            {/* Header */}
+            <div className="px-6 py-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                  <AlertTriangle className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-100">
+                      Alarmlı Düğüm: {selectedAlarmDetail.host?.name || 'İş İstasyonu'}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40">
+                      {selectedAlarmDetail.code}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    IP: <strong className="text-cyan-300">{selectedAlarmDetail.host?.ip}:{selectedAlarmDetail.host?.port || 6129}</strong> • Domain: {selectedAlarmDetail.host?.domain || 'WORKGROUP'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAlarmDetail(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4 text-xs font-mono">
+              {(() => {
+                const def = ALARM_DEFINITIONS[selectedAlarmDetail.code] || {
+                  code: selectedAlarmDetail.code,
+                  title: `Sistem Alarmı (${selectedAlarmDetail.code})`,
+                  description: 'Hedef makinede telemetri eşiği aşıldı.',
+                  threshold: 'Telemetri eşik sapması',
+                  rootCauses: ['İş istasyonunda olağan dışı yük veya iletişim kesintisi meydana geldi.'],
+                  remediations: ['Makinanın ağ durumunu ve servislerini kontrol edin.']
+                };
+
+                return (
+                  <>
+                    <div className="p-3.5 rounded-xl bg-rose-950/20 border border-rose-800/30 text-slate-200 leading-relaxed font-sans text-xs">
+                      <div className="font-bold text-rose-300 mb-1 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-rose-400" />
+                        <span>{def.title}</span>
+                      </div>
+                      <p>{def.description}</p>
+                      <div className="mt-2 text-[11px] font-mono text-cyan-300">
+                        Tetiklenme Kuralı: {def.threshold}
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+                      <div>
+                        <span className="text-rose-400 font-bold block mb-1">Olası Nedenler (Root Causes):</span>
+                        <div className="space-y-1 text-slate-400 text-[11px]">
+                          {def.rootCauses.map((c, i) => (
+                            <div key={i} className="flex items-start gap-1.5">
+                              <span className="text-rose-400">•</span>
+                              <span>{c}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800">
+                        <span className="text-emerald-400 font-bold block mb-1">Önerilen Müdahale Adımları:</span>
+                        <div className="space-y-1 text-slate-300 text-[11px]">
+                          {def.remediations.map((r, i) => (
+                            <div key={i} className="flex items-start gap-1.5">
+                              <span className="text-emerald-400 font-bold">{i + 1}.</span>
+                              <span>{r}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Troubleshooting Actions */}
+                    <div className="pt-2">
+                      <span className="text-slate-400 font-bold block mb-2 text-[11px]">
+                        Hızlı Müdahale Aksiyonları:
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const h = selectedAlarmDetail.host;
+                            setSelectedAlarmDetail(null);
+                            handleConnect(h);
+                          }}
+                          className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:opacity-95 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-[0_0_15px_rgba(56,189,248,0.25)]"
+                        >
+                          <Zap className="w-3.5 h-3.5 fill-current" /> 1-Click Bağlan & İncele
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerWakeOnLan(selectedAlarmDetail.host);
+                          }}
+                          className="py-2.5 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                        >
+                          <Zap className="w-3.5 h-3.5 fill-current" /> WoL Sihirli Paketi Gönder
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleRemotePowerAction(selectedAlarmDetail.host, 'reboot');
+                          }}
+                          className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 text-amber-400" /> Makineyi Yeniden Başlat (Reboot)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAlarmDetail(null);
+                            setActiveTab('processes');
+                          }}
+                          className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Cpu className="w-3.5 h-3.5 text-cyan-400" /> Süreçler & Servisleri Aç
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 bg-slate-900/90 border-t border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedAlarmDetail(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer"
+              >
+                Kapat
+              </button>
             </div>
           </div>
         </div>

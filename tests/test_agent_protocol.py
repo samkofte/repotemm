@@ -565,6 +565,61 @@ class TestAgentProtocol(unittest.TestCase):
         self.assertIn('status', first_svc)
         self.assertIn('isProtected', first_svc)
 
+    def test_win32_named_pipe_ipc_session_isolation(self):
+        """Bölüm 5 Session 0 (SYSTEM) ve Session 1 (İşçi) Named Pipe IPC çift yönlü iletişimini test eder."""
+        import threading
+        from named_pipe_ipc import NamedPipeServer, NamedPipeClient, get_pipe_name_for_hwid
+
+        # 1. Pipe adı üretme testi
+        test_hwid = "a1b2c3d4e5f678901122334455667788"
+        pipe_path = get_pipe_name_for_hwid(test_hwid)
+        self.assertTrue(pipe_path.startswith(r"\\.\pipe\RemoteMM_IPC_"))
+        self.assertIn("a1b2c3d4e5f67890", pipe_path)
+
+        # 2. Canlı Named Pipe Sunucu & İstemci döngüsü testi
+        test_pipe_name = r"\\.\pipe\RemoteMM_UnitTest_Pipe_" + str(int(time.time() * 1000))[-6:]
+        client_received = []
+
+        def client_worker():
+            client = NamedPipeClient(test_pipe_name)
+            # Bağlan
+            connected = client.connect(timeout_ms=3000)
+            if connected:
+                # Sunucuya komut gönder
+                client.send({'type': 'WORKER_HELLO', 'session': 1})
+                # Sunucudan yanıt bekle
+                resp = client.receive(1024)
+                client_received.append(resp)
+                client.close()
+
+        server = NamedPipeServer(test_pipe_name)
+        server.start()
+
+        # İstemci thread'ini başlat
+        t = threading.Thread(target=client_worker, daemon=True)
+        t.start()
+
+        # Sunucu bağlantıyı kabul etsin
+        ok = server.wait_for_connection()
+        self.assertTrue(ok)
+
+        # İstemciden gelen mesajı oku
+        raw_req = server.receive(1024)
+        req_data = json.loads(raw_req.decode('utf-8'))
+        self.assertEqual(req_data.get('type'), 'WORKER_HELLO')
+        self.assertEqual(req_data.get('session'), 1)
+
+        # İstemciye yanıt gönder
+        server.send({'type': 'SERVICE_ACK', 'status': 'AUTHORIZED'})
+        server.close()
+        t.join(timeout=2.0)
+
+        # İstemcinin yanıtı aldığını doğrula
+        self.assertGreater(len(client_received), 0)
+        resp_data = json.loads(client_received[0].decode('utf-8'))
+        self.assertEqual(resp_data.get('type'), 'SERVICE_ACK')
+        self.assertEqual(resp_data.get('status'), 'AUTHORIZED')
+
 
 if __name__ == '__main__':
     unittest.main()

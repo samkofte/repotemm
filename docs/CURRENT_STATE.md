@@ -85,7 +85,8 @@ flowchart LR
 | **Auto-Rollback State Machine** | ✅ Tamamlandı | SHA-256 hash doğrulaması, `.bak` yedeği ve arıza durumunda otomatik geri alma (`agent/updater.py`). |
 | **Sıfır-Güven (Zero-Trust) Sınırları** | ✅ Tamamlandı | Path traversal, 25MB tampon taşması ve çekirdek süreç koruma filtreleri. |
 | **Uçtan Uca (E2E) TCP Entegrasyonu** | ✅ Tamamlandı | Canlı TCP el sıkışma, dinamik stream geçişleri, PING/PONG gecikme ve sohbet döngüsü. |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (27/27 passed) ve Node.js test runner (7/7 passed) — Toplam 34 test %100 Başarılı. |
+| **Win32 Named Pipe IPC** | ✅ Tamamlandı | Session 0 (SYSTEM Servisi) ↔ Session 1 (Masaüstü İşçisi) yalıtımı, SDDL DACL güvenliği (`agent/named_pipe_ipc.py`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (32/32 passed) ve Node.js test runner (10/10 passed) — Toplam 42 test %100 Başarılı. |
 
 ---
 
@@ -145,3 +146,9 @@ flowchart LR
    - **Saf Win32 Advapi32 Servis Kontrol Motoru (Bölüm 6.1):** Windows servisleri için harici shell (`cmd.exe /c net start/stop`) ve yavaş PowerShell süreçleri tamamen terk edildi. Doğrudan `advapi32.OpenSCManagerW`, `OpenServiceW`, `StartServiceW`, `ControlService(STOP)` ve `EnumServicesStatusExW` çağrılarıyla mikrosaniye hızında servis yönetimi (`agent/service_manager.py`) kodlandı. `RemoteMMAgent`, `RpcSs`, `EventLog` gibi kritik çekirdek servisler için koruma kalkanı işletildi.
    - **Yönlendirmeli (Subnet-Directed) Wake-on-LAN (Bölüm 4.1 & 6):** `server/wol.js` içine `calculateDirectedBroadcast()` fonksiyonu eklenerek CIDR ve alt ağ maskelerine göre hedef alt ağ yayını (örn: `192.168.10.255`, `172.16.255.255`) ve doğrudan unicast desteğiyle VLAN/switch engelleri aşıldı.
    - 31 Python ve 10 Node.js otomatik testi olmak üzere toplam 41 test %100 başarıyla tamamlandı.
+
+10. **Aşama 10: Win32 Named Pipe IPC Session 0 ↔ Session 1 İzolasyonu (TAMAMLANDI)**
+    - **Session 0 (SYSTEM Servis Katmanı) ve Session 1 (Kullanıcı Masaüstü İşçisi) İletişimi (Bölüm 5):** Windows Vista sonrası Service Hardening izolasyonunu aşmak üzere `agent/named_pipe_ipc.py` altında saf Win32 `kernel32.dll` ve `advapi32.dll` API'leri ile (`CreateNamedPipeW`, `ConnectNamedPipe`, `CreateFileW`, `ReadFile`, `WriteFile`, `CloseHandle`) çalışan çift yönlü Named Pipe istemci ve sunucu motoru hayata geçirildi.
+    - **SDDL DACL Güvenlik Açıklığı:** SYSTEM (Session 0) bağlamında oluşturulan boruya Session 1/2 standart kullanıcı oturumlarının erişebilmesi için `ConvertStringSecurityDescriptorToSecurityDescriptorW` ile `D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)` DACL güvenlik tanımlayıcısı atandı.
+    - **4-Bayt Çerçeveleme:** İletilen JSON ve ham veriler 4-baytlık `I` uzunluk ön eki ile TCP/Pipe veri parçalanmasına karşı korumaya alındı.
+    - Toplam 42 otomatik test (32 Python, 10 Node.js) — %100 Başarı Oranı.

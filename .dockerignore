@@ -1,0 +1,7 @@
+node_modules
+.git
+.agents
+agent/__pycache__
+tests/__pycache__
+dist_installer
+*.log

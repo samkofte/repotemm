@@ -574,14 +574,13 @@ wss.on('connection', (ws, req) => {
   const targetHost = params.get('host') || '127.0.0.1';
   const targetPort = parseInt(params.get('port') || '6129', 10);
   const domain = params.get('domain') || 'WORKGROUP';
-  const username = params.get('username') || 'Administrator';
+  let username = params.get('username') || 'Administrator';
   const password = params.get('password') || '';
   const targetMac = params.get('mac') || '';
   const forceReinstall = params.get('force') === 'true' || params.get('reinstall') === 'true';
   const requireConsent = params.get('consent') === 'true';
 
   const sessionToken = params.get('token') || params.get('sessionToken') || '';
-  let username = params.get('username') || 'Administrator';
   let operatorRole = (params.get('role') || 'SUPER_ADMIN').toUpperCase();
   let tenantId = 'tenant_default';
 

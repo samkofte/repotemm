@@ -230,8 +230,17 @@ export default function App() {
   const isMousePressedRef = useRef(false);
   const canvasRef = useRef(null);
   const screenImgRef = useRef(null);
+  const latestFrameRef = useRef(null);
   const lastMouseMoveRef = useRef(0);
   const [hasFrame, setHasFrame] = useState(false);
+
+  // Restore latest frame when navigating to the console tab
+  useEffect(() => {
+    if (activeTab === 'console' && latestFrameRef.current && screenImgRef.current) {
+      screenImgRef.current.src = latestFrameRef.current;
+      if (!hasFrame) setHasFrame(true);
+    }
+  }, [activeTab]);
 
   // Persistent Host Directory State
   const [savedHosts, setSavedHosts] = useState(() => {
@@ -598,11 +607,14 @@ export default function App() {
 
     setIsConnected(false);
     setIsConnecting(true);
+    setActiveTab('console');
     setIsScreenBlackedOut(false);
     setIsInputLocked(false);
     setConnectionError(null);
     setDeployStatus(forceReinstall ? 'Zorla yeniden kurulum ve güncelleme başlatılıyor...' : null);
     setFrameSrc(null);
+    latestFrameRef.current = null;
+    if (screenImgRef.current) screenImgRef.current.src = '';
     setFrameSvg(null);
     setHasFrame(false);
     setAgentInfo(null);
@@ -715,10 +727,15 @@ export default function App() {
           setDeployStatus(null);
           setConnectionError(null);
           if (data.frame) {
+            const dataUri = data.frame.startsWith('data:') ? data.frame : `data:image/jpeg;base64,${data.frame}`;
+            latestFrameRef.current = dataUri;
             if (screenImgRef.current) {
-              screenImgRef.current.src = `data:image/jpeg;base64,${data.frame}`;
+              screenImgRef.current.src = dataUri;
             }
-            if (!hasFrame) setHasFrame(true);
+            if (!hasFrame) {
+              setHasFrame(true);
+              setFrameSrc(dataUri);
+            }
             if (data.tier) {
               setStreamTier(data.tier);
             }
@@ -909,6 +926,8 @@ export default function App() {
     setIsInputLocked(false);
     stopVoiceIntercom();
     setAgentInfo(null);
+    latestFrameRef.current = null;
+    if (screenImgRef.current) screenImgRef.current.src = '';
     setFrameSrc(null);
     setFrameSvg(null);
     setHasFrame(false);
@@ -1451,6 +1470,10 @@ export default function App() {
               if (!h) return;
               const hostTarget = h.ip || h.name;
               const portTarget = h.port || '6129';
+              // If actively streaming to this host via WebSocket, skip snapshot poll to prevent socket conflict
+              if (isConnected && (targetHost === hostTarget || targetHost === h.ip)) {
+                return;
+              }
               try {
                 const snapRes = await fetch(`http://localhost:3001/api/fleet/snapshot?host=${encodeURIComponent(hostTarget)}&port=${encodeURIComponent(portTarget)}&fresh=true`);
                 if (!snapRes.ok) return;
@@ -2482,6 +2505,7 @@ export default function App() {
                 >
                   <img
                     ref={screenImgRef}
+                    src={frameSrc || latestFrameRef.current || undefined}
                     alt="Remote Console Stream"
                     className={`w-full h-full pointer-events-none select-none ${
                       !hasFrame ? 'opacity-0' : 'opacity-100'

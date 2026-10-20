@@ -380,9 +380,9 @@ app.get('/api/fleet/snapshot', async (req, res) => {
   const port = parseInt(req.query.port || '6129', 10);
   if (!host) return res.status(400).json({ error: 'host parametresi gerekli' });
 
-  // 2 saniyelik onbellek kontrolu (veya fresh=true ise aninda canli yakala)
-  const cached = thumbnailCache.get(host);
-  if (cached && (Date.now() - cached.timestamp < 2000) && !req.query.fresh) {
+  // 3 saniyelik onbellek kontrolu (veya aktif canli yayindaysa dogrudan bellekten dondur)
+  const cached = thumbnailCache.get(host) || thumbnailCache.get(`${host}:${port}`);
+  if (cached && (Date.now() - cached.timestamp < 3500)) {
     return res.json({ success: true, online: true, ...cached });
   }
 
@@ -919,6 +919,18 @@ wss.on('connection', (ws, req) => {
                 hasSentStreamActive = true;
                 sendDiag('STREAM', 'SUCCESS', 'Canlı masaüstü video akış motoru aktif (1280x720, 30-60 FPS).');
               }
+              try {
+                const parsedFrame = JSON.parse(line);
+                if (parsedFrame.frame) {
+                  const snapEntry = {
+                    frame: parsedFrame.frame,
+                    snapshot: parsedFrame.frame,
+                    timestamp: Date.now()
+                  };
+                  thumbnailCache.set(targetHost, snapEntry);
+                  thumbnailCache.set(`${targetHost}:${targetPort}`, snapEntry);
+                }
+              } catch (_) {}
             } else if (line.includes('"HANDSHAKE_ACK"')) {
               const parsed = JSON.parse(line);
               const remoteVer = parsed.agentVersion || 'v1.0';

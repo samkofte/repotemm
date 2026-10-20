@@ -90,7 +90,8 @@ flowchart LR
 | **Operatör & RBAC Oturum Motoru** | ✅ Tamamlandı | PBKDF2-HMAC-SHA512 tuzlanmış parola güvenliği, kriptografik HMAC-SHA256 oturum token'ları, Operatör Yönetim Paneli (`server/auth.js`). |
 | **256 KB Parçalı Transfer & Güvenli Dosya** | ✅ Tamamlandı | 256 KB chunked upload/download, SHA-256 anlık tahrifat imhası, SAM/SYSTEM yol koruması (`agent/file_manager.py`). |
 | **Adaptif Akış & Geri Basınç Motoru** | ✅ Tamamlandı | Otonom RTT EMA gecikme izleme, 4 kademeli dinamik kalite/FPS uyarlama, 256KB Gateway geri basınç düşürme (`agent/stream_throttler.py`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (42/42 passed) ve Node.js test runner (11/11 passed) — Toplam 53 test %100 Başarılı. |
+| **Oturum İşçisi Canlı Gözetmeni (Supervisor)** | ✅ Tamamlandı | Win32 Session 0 izolasyonu, WTS konsol oturumu keşfi, CreateProcessAsUserW enjeksiyonu, kayan pencereli çökme kalkanı (`agent/session_supervisor.py`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (51/51 passed) ve Node.js test runner (11/11 passed) — Toplam 62 test %100 Başarılı. |
 
 ---
 
@@ -188,3 +189,16 @@ flowchart LR
     - **Gateway 256KB Geri Basınç Kalkanı:** Gateway sunucusunda WebSocket `bufferedAmount > 256KB` olduğunda bayat video kareleri atlanır ve ardışık tıkanmalarda ajana `THROTTLE_BACKPRESSURE` bildirimi basılarak sıkıştırma artırılır.
     - **NOC HUD Canlı Adaptif Geri Bildirim:** Canlı Konsol menüsüne "⚡ Otomatik Adaptif" seçeneği eklendi ve canlı HUD rozetinde anlık kademe (`ULTRA_60FPS`, `BALANCED_30FPS` vb.) operatöre dinamik raporlandı.
     - Toplam 53 otomatik test (42 Python, 11 Node.js) — %100 Başarı Oranı.
+
+15. **Aşama 15: Güvenli Masaüstü Enjeksiyonu ve Oturum İşçisi Canlı Gözetmeni (Supervisor & LaunchWatchdog) (TAMAMLANDI)**
+    - **Session 0 İzolasyonu & Canlı Oturum Gözetimi (Bölüm 5):** Windows Vista ve sonrası servis yalıtımını tam kurumsal standartlarda çözmek üzere `agent/session_supervisor.py` mimarisi hayata geçirildi. SYSTEM yetkisiyle çalışan arka plan servisi, grafik katmanını görmeyen kör katmanda beklerken kullanıcı oturumundaki `--session-worker` masaüstü işçisini sürekli denetler.
+    - **Aktif Konsol Keşfi ve 3 Kademeli Token Edinimi:**
+      1. Birincil Strateji: `kernel32.WTSGetActiveConsoleSessionId()` ile aktif masaüstü tespit edilip `wtsapi32.WTSQueryUserToken()` ve `DuplicateTokenEx(TokenPrimary)` ile primary token edinilir ve `SetTokenInformation(TokenSessionId)` ile hedeflenir.
+      2. İkincil Strateji: Oturumdaki `explorer.exe` veya `winlogon.exe` süreçlerinden token çoğaltma (Process Token Duplication).
+      3. Üçüncül Strateji: Mevcut SYSTEM token'ı klonlanıp hedef oturum kimliğine bağlanır.
+    - **Kullanıcı Masaüstü Enjeksiyonu (`CreateProcessAsUserW`):** `userenv.CreateEnvironmentBlock` ile kullanıcı ortam değişkenleri hazırlanır; `WinSta0\Default` (ve kilit ekranı için `WinSta0\Winlogon`) masaüstü hedefleriyle `CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW` bayraklarıyla süreç başlatılır.
+    - **Win32 Süreç Tutamaç Denetimi (`WaitForSingleObject`):** Eski kör soket sorguları yerine, `kernel32.WaitForSingleObject(hProcess, 0)` ve `GetExitCodeProcess` ile işçi sürecinin canlılık durumu mikrosaniyede kontrol edilir; çıkış kodları (`0: STOPPED`, `>0: CRASHED`) kaydedilir.
+    - **Kayan Pencereli Çökme Kalkanı (Anti-Crash Burst Throttling):** İşçinin ardışık çökme döngülerine (crash loop) girmesini önlemek için 30 saniyelik kayan pencerede maksimum 5 yeniden başlatma izni tanınır; sınır aşılırsa gözetmen `BACKOFF_THROTTLED` durumuna geçer ve soğuma beklemesi (cooldown) uygular.
+    - **Oturum Değişim Göçü (Session Switch Migration):** Hızlı kullanıcı değişimi (Fast User Switching) veya oturum kilidi durumlarında eski oturumdaki işçi zarifçe kapatılır ve yeni aktif oturumda otomatik başlatılır.
+    - **Kaynak Güvenliği:** Süreç sonlandığında ve gözetmen durdurulduğunda tüm Win32 süreç/iş parçacığı tutamaçları (`CloseHandle`) ve ortam blokları (`DestroyEnvironmentBlock`) bellek sızıntısı olmadan serbest bırakılır.
+    - Toplam 62 otomatik test (51 Python, 11 Node.js) — %100 Başarı Oranı.

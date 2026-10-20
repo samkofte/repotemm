@@ -17,8 +17,9 @@
   - `tests/test_system_manager.py` (3 test)
   - `tests/test_file_manager.py` (4 test)
   - `tests/test_stream_throttler.py` (3 test)
-* **Toplam Python Test Sayısı:** 42
-* **Geçen:** 42
+  - `tests/test_session_supervisor.py` (9 test)
+* **Toplam Python Test Sayısı:** 51
+* **Geçen:** 51
 * **Başarısız:** 0
 * **Atlanan:** 0
 * **Süre:** 0.259s
@@ -65,6 +66,15 @@
   40. `test_adaptive_stream_latency_tiers` — `tests/test_stream_throttler.py`: RTT gecikmesine göre 4 kademeli dinamik kalite ve FPS adaptasyonu: **GEÇTİ**
   41. `test_backpressure_drop_penalty` — `tests/test_stream_throttler.py`: Geri basınç durumunda anında kademe düşürme ve ağ koruması: **GEÇTİ**
   42. `test_hysteresis_cautious_upshift` — `tests/test_stream_throttler.py`: Ağ toparlanmasında dalgalanmayı önleyen EMA ve 3 ardışık iyi örnek kuralı: **GEÇTİ**
+  43. `test_worker_process_info_popen_lifecycle` — `tests/test_session_supervisor.py`: WorkerProcessInfo süreç canlılık takibi, PID ve çıkış kodu değerlendirmesi: **GEÇTİ**
+  44. `test_worker_process_info_terminate` — `tests/test_session_supervisor.py`: Süreç sonlandırma, zaman aşımı ve kaynak temizliği: **GEÇTİ**
+  45. `test_burst_throttling_detection` — `tests/test_session_supervisor.py`: Kayan pencereli çökme kalkanı (30s pencere, max burst eşiği): **GEÇTİ**
+  46. `test_supervisor_initial_launch_step` — `tests/test_session_supervisor.py`: Gözetmen ilk adımında aktif oturuma `--session-worker` enjeksiyonu ve ACTIVE durumu: **GEÇTİ**
+  47. `test_supervisor_session_switch_handling` — `tests/test_session_supervisor.py`: Hızlı kullanıcı değişimi ve aktif oturum geçişinde eski işçiyi kapatıp yeni oturuma göç: **GEÇTİ**
+  48. `test_supervisor_backoff_on_repeated_crashes` — `tests/test_session_supervisor.py`: Ardışık çökme anında BACKOFF_THROTTLED durumuna geçiş ve soğuma periyodu: **GEÇTİ**
+  49. `test_stop_supervisor_cleans_resources` — `tests/test_session_supervisor.py`: Gözetmen durdurulduğunda işçinin güvenle kapatılması ve STOPPED durumu: **GEÇTİ**
+  50. `test_worker_process_info_win32_handle_lifecycle` — `tests/test_session_supervisor.py`: Saf Win32 WaitForSingleObject (WAIT_TIMEOUT vs WAIT_OBJECT_0) ve CloseHandle tutamaç yönetimi: **GEÇTİ**
+  51. `test_supervisor_loop_bounded_iterations` — `tests/test_session_supervisor.py`: Gözetmen ana döngüsünün sınırlı iterasyonla kararlı yürütülmesi: **GEÇTİ**
 
 ---
 
@@ -154,3 +164,12 @@
     - Gateway üzerinde WebSocket backpressure eşiği 256KB seviyesine çekilerek ara kare düşürme ve ajana THROTTLE_BACKPRESSURE bildirimi sağlandı.
     - React NOC Canlı Konsol HUD menüsüne "Otomatik Adaptif" seçeneği ve canlı kademe geri bildirim rozeti bağlandı.
     - Toplam 53 otomatik test (42 Python, 11 Node.js) — %100 Başarı Oranı.
+
+15. **Aşama 15: Güvenli Masaüstü Enjeksiyonu ve Oturum İşçisi Canlı Gözetmeni (Supervisor & LaunchWatchdog):**
+    - Section 5 gereğince Session 0 yalıtımı altındaki SYSTEM servisinin kullanıcı masaüstüne enjeksiyon yapmasını sağlayan `agent/session_supervisor.py` geliştirildi.
+    - `kernel32.WTSGetActiveConsoleSessionId()`, `wtsapi32.WTSQueryUserToken()`, `DuplicateTokenEx(TokenPrimary)` ve `SetTokenInformation(TokenSessionId)` ile 3 kademeli token edinimi sağlandı.
+    - `CreateProcessAsUserW` ve `CreateEnvironmentBlock` ile `WinSta0\Default` ve `WinSta0\Winlogon` masaüstü hedeflerine `--session-worker` enjeksiyonu yapıldı.
+    - `kernel32.WaitForSingleObject(hProcess, 0)` ve `GetExitCodeProcess` ile mikrosaniyelik süreç sağlığı gözetimi kodlandı.
+    - Kayan pencereli (30s) çökme patlaması kalkanı ile aşırı çökmelerde `BACKOFF_THROTTLED` durumuna geçiş ve soğuma yönetimi sağlandı.
+    - Hızlı kullanıcı değişiminde (Fast User Switching) eski oturumdaki işçiyi güvenle kapatıp yeni oturumda başlatma akışı doğrulandı.
+    - Toplam 62 otomatik test (51 Python, 11 Node.js) — %100 Başarı Oranı.

@@ -54,6 +54,11 @@ except Exception:
 
 
 
+try:
+    from session_supervisor import SessionWorkerSupervisor
+except Exception:
+    SessionWorkerSupervisor = None
+
 kernel32 = ctypes.windll.kernel32
 userenv  = ctypes.windll.userenv
 wtsapi32 = ctypes.windll.wtsapi32
@@ -355,11 +360,22 @@ def server_running():
     except: return False
 
 def watchdog_loop():
-    """Arka planda calisir: server yoksa veya aktif oturum degistiyse yeniden baslatir."""
+    """Arka planda calisir: Win32 SessionWorkerSupervisor ile oturum iscisi yonetir."""
     enable_all_privileges()
     log_file = os.path.join(os.path.dirname(AGENT_PATH), "agent_debug.log")
     os.system('netsh advfirewall firewall delete rule name=RemoteMMAgent >nul 2>&1')
     os.system(f'netsh advfirewall firewall add rule name=RemoteMMAgent dir=in action=allow protocol=TCP localport={PORT} >nul 2>&1')
+
+    if SessionWorkerSupervisor is not None:
+        try:
+            with open(log_file, "a") as f:
+                f.write(f"[{time.time()}] RemoteMM Enterprise SessionWorkerSupervisor baslatiliyor.\n")
+        except:
+            pass
+        supervisor = SessionWorkerSupervisor(target_flag='--session-worker', agent_path=AGENT_PATH)
+        supervisor.run_loop()
+        return
+
     last_launch = 0
     stable_session = get_active_session()
     candidate_session = stable_session
@@ -1915,6 +1931,7 @@ def print_agent_status():
         'hwid': hwid,
         'port': PORT,
         'platform': sys.platform,
+        'hasSupervisor': SessionWorkerSupervisor is not None,
         'isAdmin': ctypes.windll.shell32.IsUserAnAdmin() != 0 if hasattr(ctypes.windll, 'shell32') else False
     }
     print(json.dumps(status, indent=2))
@@ -1937,8 +1954,14 @@ if __name__ == '__main__':
         elif '--chat-ui' in sys.argv:
             run_chat_ui()
             sys.exit(0)
+        elif '--session-worker' in sys.argv:
+            start_server()
         elif '--server' in sys.argv:
             start_server()
+        elif '--supervisor' in sys.argv or '--watchdog' in sys.argv:
+            enable_all_privileges()
+            watchdog_loop()
+            sys.exit(0)
         else:
             enable_all_privileges()
             try_run_as_service()

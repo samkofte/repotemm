@@ -91,7 +91,8 @@ flowchart LR
 | **256 KB Parçalı Transfer & Güvenli Dosya** | ✅ Tamamlandı | 256 KB chunked upload/download, SHA-256 anlık tahrifat imhası, SAM/SYSTEM yol koruması (`agent/file_manager.py`). |
 | **Adaptif Akış & Geri Basınç Motoru** | ✅ Tamamlandı | Otonom RTT EMA gecikme izleme, 4 kademeli dinamik kalite/FPS uyarlama, 256KB Gateway geri basınç düşürme (`agent/stream_throttler.py`). |
 | **Oturum İşçisi Canlı Gözetmeni (Supervisor)** | ✅ Tamamlandı | Win32 Session 0 izolasyonu, WTS konsol oturumu keşfi, CreateProcessAsUserW enjeksiyonu, kayan pencereli çökme kalkanı (`agent/session_supervisor.py`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (51/51 passed) ve Node.js test runner (11/11 passed) — Toplam 62 test %100 Başarılı. |
+| **Docker Compose & Nginx Gateway Dağıtımı** | ✅ Tamamlandı | Gateway Hub için node:22-alpine konteyneri, Nginx HTTPS/WSS ters vekil, kalıcı SQLite hacmi, sağlık denetimi (`docker-compose.yml`, `nginx/`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (56/56 passed) ve Node.js test runner (11/11 passed) — Toplam 67 test %100 Başarılı. |
 
 ---
 
@@ -202,3 +203,12 @@ flowchart LR
     - **Oturum Değişim Göçü (Session Switch Migration):** Hızlı kullanıcı değişimi (Fast User Switching) veya oturum kilidi durumlarında eski oturumdaki işçi zarifçe kapatılır ve yeni aktif oturumda otomatik başlatılır.
     - **Kaynak Güvenliği:** Süreç sonlandığında ve gözetmen durdurulduğunda tüm Win32 süreç/iş parçacığı tutamaçları (`CloseHandle`) ve ortam blokları (`DestroyEnvironmentBlock`) bellek sızıntısı olmadan serbest bırakılır.
     - Toplam 62 otomatik test (51 Python, 11 Node.js) — %100 Başarı Oranı.
+
+16. **Aşama 16: Docker Compose Enterprise Gateway & Nginx HTTPS/WSS Dağıtım Altyapısı (TAMAMLANDI)**
+    - **Gateway Hub Konteynerizasyonu (`Dockerfile`):** Node.js 22-Alpine tabanlı, çok aşamalı, güvenli ve kök olmayan (`USER node`) kullanıcı bağlamında çalışan Gateway Hub imajı yapılandırıldı. Port 3001 üzerinden HTTP API ve canlı WebSocket köprüsü sunulur.
+    - **Nginx HTTPS / WSS Ters Vekil Katmanı (`nginx/`):** 80 (HTTP) ve 443 (HTTPS) dış bağlantıları karşılayan Nginx ters vekili entegre edildi. WebSocket yükseltmesi (`map $http_upgrade $connection_upgrade`), 24 saatlik kesintisiz uzaktan konsol zaman aşımı (`proxy_read_timeout 86400s`) ve 35MB dosya aktarım sınırı (`client_max_body_size 35M`) sağlandı.
+    - **Kalıcı Veri İzolasyonu & Hacim Yönetimi:** SQLite cihaz veritabanı (`remotemm_enterprise.db`) ve denetim izi (`audit_logs.jsonl`) `./data` hacmi üzerinden kalıcı hale getirildi. Konteynerler yeniden başladığında veya silinip tekrar açıldığında hiçbir veri kaybı yaşanmaz. Veritabanı ve dahili portlar doğrudan internete açılmaz; yalnızca Nginx köprüsünden erişilir.
+    - **Sağlık Denetimi (Healthcheck):** Konteyner içinde her 15 saniyede bir `/api/health` sorgulanarak servisin canlılığı doğrulanır; Nginx vekili ancak Gateway sağlıklı (`service_healthy`) olduğunda trafiği açar.
+    - **Çapraz Platform Yönetim Araçları:** Linux VPS sunucuları için `scripts/docker-manage.sh` ve Windows yöneticileri için `scripts/docker-manage.ps1` yönetim CLI'ları yazıldı (`up`, `down`, `restart`, `status`, `logs`, `health`, `backup`).
+    - **Geliştirici SSL Sertifika Üreticisi:** Yerel veya test VPS ortamında anında HTTPS/WSS testleri yapılabilmesi için `scripts/generate-dev-certs.sh` ve `scripts/generate-dev-certs.ps1` araçları sağlandı.
+    - Toplam 67 otomatik test (56 Python, 11 Node.js) — %100 Başarı Oranı.

@@ -18,8 +18,9 @@
   - `tests/test_file_manager.py` (4 test)
   - `tests/test_stream_throttler.py` (3 test)
   - `tests/test_session_supervisor.py` (9 test)
-* **Toplam Python Test Sayısı:** 51
-* **Geçen:** 51
+  - `tests/test_docker_deployment.py` (5 test)
+* **Toplam Python Test Sayısı:** 56
+* **Geçen:** 56
 * **Başarısız:** 0
 * **Atlanan:** 0
 * **Süre:** 0.259s
@@ -75,6 +76,11 @@
   49. `test_stop_supervisor_cleans_resources` — `tests/test_session_supervisor.py`: Gözetmen durdurulduğunda işçinin güvenle kapatılması ve STOPPED durumu: **GEÇTİ**
   50. `test_worker_process_info_win32_handle_lifecycle` — `tests/test_session_supervisor.py`: Saf Win32 WaitForSingleObject (WAIT_TIMEOUT vs WAIT_OBJECT_0) ve CloseHandle tutamaç yönetimi: **GEÇTİ**
   51. `test_supervisor_loop_bounded_iterations` — `tests/test_session_supervisor.py`: Gözetmen ana döngüsünün sınırlı iterasyonla kararlı yürütülmesi: **GEÇTİ**
+  52. `test_docker_compose_structure_and_services` — `tests/test_docker_deployment.py`: docker-compose.yml servisleri, kalıcı hacim (./data), ağ izolasyonu ve healthcheck yapılandırması: **GEÇTİ**
+  53. `test_dockerfile_security_and_directives` — `tests/test_docker_deployment.py`: Dockerfile node:22-alpine imajı, kısıtlı USER node kullanıcısı, EXPOSE 3001 ve CMD direktifleri: **GEÇTİ**
+  54. `test_nginx_reverse_proxy_configuration` — `tests/test_docker_deployment.py`: Nginx upstream, Connection Upgrade haritalaması, 86400s WebSocket zaman aşımı ve 35M gövde sınırı: **GEÇTİ**
+  55. `test_env_example_completeness` — `tests/test_docker_deployment.py`: .env.example şablonu, zorunlu ortam değişkenleri ve üretim gizli anahtar uyarıları: **GEÇTİ**
+  56. `test_management_scripts_exist_and_executable` — `tests/test_docker_deployment.py`: docker-manage ve generate-dev-certs çapraz platform yönetim betiklerinin doğrulanması: **GEÇTİ**
 
 ---
 
@@ -173,3 +179,11 @@
     - Kayan pencereli (30s) çökme patlaması kalkanı ile aşırı çökmelerde `BACKOFF_THROTTLED` durumuna geçiş ve soğuma yönetimi sağlandı.
     - Hızlı kullanıcı değişiminde (Fast User Switching) eski oturumdaki işçiyi güvenle kapatıp yeni oturumda başlatma akışı doğrulandı.
     - Toplam 62 otomatik test (51 Python, 11 Node.js) — %100 Başarı Oranı.
+
+16. **Aşama 16: Docker Compose Enterprise Gateway & Nginx HTTPS/WSS Dağıtım Altyapısı:**
+    - Görev 3 ve `docker-compose-deployment` skill yönergelerine uygun olarak Node.js Gateway Hub (`remotemm-gateway`) ve Nginx ters vekili (`remotemm-proxy`) için Docker Compose ortamı kuruldu.
+    - Kısıtlı `USER node` kullanıcısı, çok aşamalı hafif `node:22-alpine` imajı ve her 15 saniyede bir `/api/health` sorgulayan konteyner sağlık denetimi oluşturuldu.
+    - `./data:/app/data` kalıcı veri hacmi ile SQLite cihaz veritabanı ve ISO 27001 denetim kütüklerinin konteyner yeniden başlatmalarında korunması sağlandı.
+    - Nginx üzerinde WebSocket `Upgrade` başlıkları, 24 saatlik (`86400s`) akış zaman aşımı ve 35MB gövde boyutu yapılandırıldı.
+    - Çapraz platform yönetim (`docker-manage.sh`, `docker-manage.ps1`) ve geliştirici SSL sertifika üretim (`generate-dev-certs.sh`, `generate-dev-certs.ps1`) betikleri eklendi.
+    - Toplam 67 otomatik test (56 Python, 11 Node.js) — %100 Başarı Oranı.

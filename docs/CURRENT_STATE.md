@@ -86,7 +86,8 @@ flowchart LR
 | **Sıfır-Güven (Zero-Trust) Sınırları** | ✅ Tamamlandı | Path traversal, 25MB tampon taşması ve çekirdek süreç koruma filtreleri. |
 | **Uçtan Uca (E2E) TCP Entegrasyonu** | ✅ Tamamlandı | Canlı TCP el sıkışma, dinamik stream geçişleri, PING/PONG gecikme ve sohbet döngüsü. |
 | **Win32 Named Pipe IPC** | ✅ Tamamlandı | Session 0 (SYSTEM Servisi) ↔ Session 1 (Masaüstü İşçisi) yalıtımı, SDDL DACL güvenliği (`agent/named_pipe_ipc.py`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (32/32 passed) ve Node.js test runner (10/10 passed) — Toplam 42 test %100 Başarılı. |
+| **Saf Win32 Süreç & Güç Yöneticisi** | ✅ Tamamlandı | Toolhelp32 & PSAPI ile mikrosaniyelik süreç listeleme, Kernel Kill Kalkanı, Native Win32 Güç Yönetimi (`agent/system_manager.py`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (35/35 passed) ve Node.js test runner (10/10 passed) — Toplam 45 test %100 Başarılı. |
 
 ---
 
@@ -152,3 +153,10 @@ flowchart LR
     - **SDDL DACL Güvenlik Açıklığı:** SYSTEM (Session 0) bağlamında oluşturulan boruya Session 1/2 standart kullanıcı oturumlarının erişebilmesi için `ConvertStringSecurityDescriptorToSecurityDescriptorW` ile `D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)` DACL güvenlik tanımlayıcısı atandı.
     - **4-Bayt Çerçeveleme:** İletilen JSON ve ham veriler 4-baytlık `I` uzunluk ön eki ile TCP/Pipe veri parçalanmasına karşı korumaya alındı.
     - Toplam 42 otomatik test (32 Python, 10 Node.js) — %100 Başarı Oranı.
+
+11. **Aşama 11: Saf Win32 Süreç & Güç Yöneticisi ve Kernel Kill Kalkanı (TAMAMLANDI)**
+    - **Mikrosaniye Süreç Keşfi (Bölüm 6.1):** Yavaş ve güvenlik politikalarına takılabilen harici PowerShell (`Get-Process`) çağrısı tamamen kaldırıldı. Doğrudan `kernel32.dll` (`CreateToolhelp32Snapshot`, `Process32FirstW`, `Process32NextW`) ve `psapi.dll` (`GetProcessMemoryInfo`) ile bellek kullanımı, süreç kimliği ve `LookupAccountSidW` ile kullanıcı bağlamı mikrosaniyeler içinde çekilerek `agent/system_manager.py` yazıldı.
+    - **Kernel Critical Process Shield (Çekirdek Süreç Kalkanı):** `System`, `smss.exe`, `csrss.exe`, `wininit.exe`, `services.exe`, `lsass.exe`, `svchost.exe`, `RemoteMM_Agent.exe` ve PID <= 4 süreçlerinin sonlandırılması kesin olarak engellendi (`ACCESS_DENIED_CRITICAL_PROCESS`). Yetkili süreçler `kernel32.OpenProcess(PROCESS_TERMINATE)` + `TerminateProcess` ile güvenle sonlandırılır.
+    - **Saf Win32 Güç Yönetimi:** `os.system('shutdown ...')` ve `os.system('rundll32 ...')` tamamen kaldırıldı. `SeShutdownPrivilege` yetki yükseltmesi ile `advapi32.InitiateSystemShutdownExW`, `user32.LockWorkStation`, `powrprof.SetSuspendState` ve `advapi32.AbortSystemShutdownW` API'leri entegre edildi.
+    - **NOC Arayüz Zenginleştirmesi:** React NOC panelinde (Tab 3 ve HUD) süreçlerin RAM boyutları gösterildi ve korumalı sistem süreçlerine `🛡️ Korumalı` rozeti yerleştirilerek yetkisiz sonlandırma butonu kilitlendi.
+    - Toplam 45 otomatik test (35 Python, 10 Node.js) — %100 Başarı Oranı.

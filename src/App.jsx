@@ -582,6 +582,15 @@ export default function App() {
           if (data.processes && data.processes.length > 0) {
             setProcesses(data.processes);
           }
+        } else if (data.type === 'TASK_KILL_RES') {
+          if (!data.success) {
+            alert(`⚠️ Süreç sonlandırılamadı (PID: ${data.pid}): ${data.message}`);
+          }
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ type: 'TASK_LIST' }));
+          }
+        } else if (data.type === 'POWER_ACTION_RES') {
+          console.log('[PowerAction]', data.action, data.success ? 'Success' : 'Failed:', data.message);
         } else if (data.type === 'SERVICE_LIST_RES') {
           setIsLoadingServices(false);
           if (data.services && Array.isArray(data.services)) {
@@ -2363,15 +2372,24 @@ export default function App() {
                     {processes.map(p => (
                       <div key={p.Id} className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/80 flex items-center justify-between hover:border-slate-700 transition">
                         <div>
-                          <div className="font-bold text-slate-200">{p.ProcessName}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">PID: {p.Id} • {p.CPU}</div>
+                          <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                            {p.ProcessName}
+                            {p.isProtected && <span className="text-[10px] text-amber-400" title="Korumalı Sistem Süreci">🛡️</span>}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            PID: {p.Id} • {p.WorkingSet64 ? `${(p.WorkingSet64 / (1024 * 1024)).toFixed(0)}MB` : ''} • {p.CPU || '0.0%'}
+                          </div>
                         </div>
-                        <button
-                          onClick={() => handleKillProcess(p.Id)}
-                          className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 text-[10px] font-semibold transition"
-                        >
-                          Sonlandır
-                        </button>
+                        {p.isProtected ? (
+                          <span className="text-[10px] text-slate-500 italic px-2">Korumalı</span>
+                        ) : (
+                          <button
+                            onClick={() => handleKillProcess(p.Id)}
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 text-[10px] font-semibold transition"
+                          >
+                            Sonlandır
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3096,7 +3114,8 @@ export default function App() {
                       <th className="p-3">PID</th>
                       <th className="p-3">İşlem Adı</th>
                       <th className="p-3">Kullanıcı / Hak</th>
-                      <th className="p-3">CPU Kullanımı</th>
+                      <th className="p-3">Bellek (RAM)</th>
+                      <th className="p-3">CPU</th>
                       <th className="p-3 text-right">Eylem</th>
                     </tr>
                   </thead>
@@ -3104,20 +3123,36 @@ export default function App() {
                     {processes.map(p => (
                       <tr key={p.Id} className="hover:bg-slate-900/50 transition">
                         <td className="p-3 text-cyan-400 font-bold">{p.Id}</td>
-                        <td className="p-3 font-sans font-bold text-slate-200">{p.ProcessName}</td>
+                        <td className="p-3 font-sans font-bold text-slate-200">
+                          <div className="flex items-center gap-2">
+                            <span>{p.ProcessName}</span>
+                            {p.isProtected && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] font-mono">
+                                🛡️ Korumalı
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3 text-slate-400">
                           <span className="px-2 py-0.5 rounded bg-slate-900 text-[10px] border border-slate-800">
                             {p.User || 'SYSTEM'}
                           </span>
                         </td>
-                        <td className="p-3 text-emerald-400">{p.CPU}</td>
+                        <td className="p-3 text-cyan-300">
+                          {p.WorkingSet64 ? `${(p.WorkingSet64 / (1024 * 1024)).toFixed(1)} MB` : '—'}
+                        </td>
+                        <td className="p-3 text-emerald-400">{p.CPU || '0.0%'}</td>
                         <td className="p-3 text-right">
-                          <button
-                            onClick={() => handleKillProcess(p.Id)}
-                            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-[11px] transition font-sans font-semibold"
-                          >
-                            Sonlandır
-                          </button>
+                          {p.isProtected ? (
+                            <span className="text-slate-500 text-[11px] italic px-2">Sistem Koruyor</span>
+                          ) : (
+                            <button
+                              onClick={() => handleKillProcess(p.Id)}
+                              className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-[11px] transition font-sans font-semibold"
+                            >
+                              Sonlandır
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

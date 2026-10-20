@@ -14,11 +14,11 @@
   - `tests/test_agent_protocol.py` (23 test)
   - `tests/test_security_bounds.py` (5 test)
   - `tests/test_e2e_connection.py` (4 test)
-* **Toplam Python Test Sayısı:** 32
-* **Geçen:** 32
+* **Toplam Python Test Sayısı:** 35
+* **Geçen:** 35
 * **Başarısız:** 0
 * **Atlanan:** 0
-* **Süre:** 0.127s
+* **Süre:** 0.259s
 * **Detay:**
   1. `test_handshake_ack_structure` — HANDSHAKE_ACK zorunlu alanları ve MAC şeması doğrulama: **GEÇTİ**
   2. `test_screen_frame_packet` — SCREEN_FRAME veri paketi ve base64 görüntü bütünlüğü: **GEÇTİ**
@@ -110,4 +110,11 @@
 10. **Aşama 10: Win32 Named Pipe IPC Session 0 ↔ Session 1 İzolasyonu:**
     - Section 5 gereğince Session 0 izole sistem servisi (RemoteMMAgent --service) ile Session 1 aktif kullanıcı masaüstü işçisi (RemoteMMAgent --session-worker) arasında saf Win32 kernel32.dll borusu (CreateNamedPipeW, ConnectNamedPipe, CreateFileW).
     - SDDL DACL D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU) ile standart/ayrıcalıksız kullanıcı oturumlarının boruya güvenli erişimi ve 4-baytlık I uzunluk ön ekli çerçeveli mesajlaşma (gent/named_pipe_ipc.py).
-    - Toplam 42 otomatik test (32 Python, 10 Node.js) — %100 Başarı Oranı.
+    - Toplam 45 otomatik test (35 Python, 10 Node.js) — %100 Başarı Oranı.
+
+
+11. **Aşama 11: Saf Win32 Süreç & Güç Yöneticisi ve Kernel Kill Kalkanı:**
+    - Section 6.1 gereğince harici PowerShell (Get-Process) ve shell (taskkill, shutdown) süreçleri tamamen terk edildi. Doğrudan kernel32.dll (CreateToolhelp32Snapshot, Process32FirstW, Process32NextW), psapi.dll (GetProcessMemoryInfo), dvapi32.dll (InitiateSystemShutdownExW, LookupAccountSidW) ve user32.dll (LockWorkStation) ile mikrosaniye hızında saf Win32 süreç ve güç yönetimi (gent/system_manager.py) kodlandı.
+    - System, smss.exe, csrss.exe, wininit.exe, services.exe, lsass.exe, svchost.exe, RemoteMM_Agent.exe için ACCESS_DENIED_CRITICAL_PROCESS koruma kalkanı işletildi.
+    - React NOC arayüzünde süreçlerin RAM boyutları gösterildi ve korumalı sistem süreçlerine 🛡️ rozeti eklendi.
+    - Toplam 45 otomatik test (35 Python, 10 Node.js) — %100 Başarı Oranı.

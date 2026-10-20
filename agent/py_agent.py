@@ -1017,22 +1017,11 @@ def handle_fs(conn, cmd):
 
 def handle_task_list(conn):
     try:
-        import subprocess
-        cmd = 'powershell -NoProfile -Command "Get-Process | Select-Object -First 60 Id, ProcessName, @{Name=\'CPU\';Expression={$_.CPU}}, WorkingSet64 | ConvertTo-Json"'
-        out = subprocess.check_output(cmd, shell=True, timeout=5).decode('utf-8', errors='ignore')
-        procs = json.loads(out)
-        if isinstance(procs, dict): procs = [procs]
-        formatted = []
-        for p in procs:
-            formatted.append({
-                'Id': p.get('Id', 0),
-                'ProcessName': p.get('ProcessName', 'Unknown') + '.exe',
-                'CPU': f"{round(float(p.get('CPU') or 0), 1)}%",
-                'WorkingSet64': int(p.get('WorkingSet64') or 0),
-                'User': 'SYSTEM'
-            })
-        send_json_safe(conn, {'type':'TASK_LIST_RES','processes':formatted})
-    except: pass
+        from system_manager import enum_processes_native
+        formatted = enum_processes_native(120)
+        send_json_safe(conn, {'type': 'TASK_LIST_RES', 'processes': formatted})
+    except Exception as e:
+        send_json_safe(conn, {'type': 'TASK_LIST_RES', 'processes': [], 'error': str(e)})
 
 def handle_service_list(conn):
     try:
@@ -1581,15 +1570,15 @@ def handle_client(conn, addr):
                     cur_txt = get_clipboard_text()
                     send_json_safe(conn, {'type': 'CLIPBOARD_CONTENT', 'text': cur_txt or ''})
                 elif t=='POWER_ACTION':
-                    enable_shutdown_privilege()
-                    a = cmd.get('action','')
-                    if   a=='reboot':    os.system('shutdown /r /f /t 1')
-                    elif a=='shutdown':  os.system('shutdown /s /f /t 1')
-                    elif a=='sleep':     os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
-                    elif a=='hibernate': os.system('shutdown /h')
-                    elif a=='lock':      os.system('rundll32.exe user32.dll,LockWorkStation')
-                    elif a=='logoff':    os.system('logoff')
-                    elif a=='abort':     os.system('shutdown /a')
+                    a = cmd.get('action', '')
+                    force = bool(cmd.get('force', True))
+                    timeout = int(cmd.get('timeout', 1))
+                    try:
+                        from system_manager import execute_power_action_native
+                        ok, reason = execute_power_action_native(a, force=force, timeout=timeout)
+                        send_json_safe(conn, {'type': 'POWER_ACTION_RES', 'action': a, 'success': ok, 'message': reason})
+                    except Exception as e:
+                        send_json_safe(conn, {'type': 'POWER_ACTION_RES', 'action': a, 'success': False, 'message': str(e)})
                 elif t.startswith('FS_'):
                     threading.Thread(target=handle_fs, args=(conn, cmd), daemon=True).start()
                 elif t=='TASK_LIST':
@@ -1599,9 +1588,13 @@ def handle_client(conn, addr):
                 elif t=='SERVICE_ACTION':
                     threading.Thread(target=handle_service_action, args=(conn, cmd), daemon=True).start()
                 elif t=='KILL_PROCESS':
-
-                    try: os.system(f'taskkill /F /PID {int(cmd.get("pid",0))}')
-                    except: pass
+                    pid = int(cmd.get('pid', 0))
+                    try:
+                        from system_manager import terminate_process_native
+                        ok, reason = terminate_process_native(pid)
+                        send_json_safe(conn, {'type': 'TASK_KILL_RES', 'pid': pid, 'success': ok, 'message': reason})
+                    except Exception as e:
+                        send_json_safe(conn, {'type': 'TASK_KILL_RES', 'pid': pid, 'success': False, 'message': str(e)})
                 elif t=='AGENT_UPGRADE':
                     threading.Thread(target=do_agent_upgrade, args=(conn, cmd), daemon=True).start()
                 elif t=='REQUEST_CONSENT':

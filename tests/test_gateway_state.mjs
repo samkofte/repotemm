@@ -286,3 +286,52 @@ test('Wake-on-LAN: Directed Subnet Broadcast Calculation and Multi-Target Genera
   assert.ok(targets.includes('192.168.50.255'));
   assert.ok(targets.includes('192.168.50.12'));
 });
+
+test('AuthManager: PBKDF2 Password Hashing, Session Token Lifecycle and RBAC Authentication', async () => {
+  const { AuthManager } = await import('../server/auth.js');
+  const auth = new AuthManager();
+
+  // 1. Password hashing & verification
+  const hash = auth.hashPassword('SuperSecret123!');
+  assert.ok(hash.startsWith('pbkdf2:sha512:100000:'));
+  assert.strictEqual(auth.verifyPassword('SuperSecret123!', hash), true);
+  assert.strictEqual(auth.verifyPassword('WrongPassword', hash), false);
+  assert.strictEqual(auth.verifyPassword('', hash), false);
+
+  // 2. Authentication with pre-seeded operator
+  const loginRes = auth.authenticate('admin', 'admin');
+  assert.strictEqual(loginRes.success, true);
+  assert.strictEqual(loginRes.operator.username, 'admin');
+  assert.strictEqual(loginRes.operator.role, 'SUPER_ADMIN');
+  assert.ok(loginRes.token.startsWith('rmm_sess.'));
+
+  // 3. Token verification
+  const tokenVerify = auth.verifySessionToken(loginRes.token);
+  assert.strictEqual(tokenVerify.valid, true);
+  assert.strictEqual(tokenVerify.payload.username, 'admin');
+  assert.strictEqual(tokenVerify.payload.role, 'SUPER_ADMIN');
+
+  // 4. Token tampering detection
+  const tamperedToken = loginRes.token.substring(0, loginRes.token.length - 4) + 'abcd';
+  const tamperedVerify = auth.verifySessionToken(tamperedToken);
+  assert.strictEqual(tamperedVerify.valid, false);
+
+  // 5. Create new operator with custom role
+  const newOp = auth.createOperator({
+    username: 'test_tech',
+    email: 'tech@test.com',
+    password: 'tech_password_123',
+    role: 'HELPDESK'
+  });
+  assert.strictEqual(newOp.username, 'test_tech');
+  assert.strictEqual(newOp.role, 'HELPDESK');
+
+  const techLogin = auth.authenticate('test_tech', 'tech_password_123');
+  assert.strictEqual(techLogin.success, true);
+  assert.strictEqual(techLogin.operator.role, 'HELPDESK');
+
+  // Clean up
+  auth.deleteOperator(newOp.id);
+  assert.strictEqual(auth.authenticate('test_tech', 'tech_password_123').success, false);
+});
+

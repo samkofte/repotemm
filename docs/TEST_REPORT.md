@@ -58,8 +58,8 @@
 ### B. Gateway, Merkezi Kayıt (Registry), Denetim İzi (Audit), RMM2 ve WoL Testleri
 * **Komut:** `node --test tests/test_gateway_state.mjs`
 * **Dosya:** `tests/test_gateway_state.mjs`
-* **Test Sayısı:** 10
-* **Geçen:** 10
+* **Test Sayısı:** 11
+* **Geçen:** 11
 * **Başarısız:** 0
 * **Atlanan:** 0
 * **Süre:** 194.3ms
@@ -74,6 +74,7 @@
   8. `DeviceRegistry: ALERT_OFFLINE Heartbeat Expiration (45s Inactivity)` — 45 saniye telemetri paketi göndermeyen uç noktaların otomatik ALERT_OFFLINE alarmına çekilmesi: **GEÇTİ**
   9. `RMM2 Binary Framing Codec: Packet Encoding, Decoding and Partial Chunk Stream Parsing` — 12 bayt RMM2 ikili başlık, TCP parçalanma simülasyonu ve tam kare birleştirme: **GEÇTİ**
   10. `Wake-on-LAN: Directed Subnet Broadcast Calculation and Multi-Target Generation` — CIDR, /24, /16 alt ağ yayın adresi hesabı ve VLAN geçişli çoklu hedef üretimi: **GEÇTİ**
+  11. `AuthManager: PBKDF2 Password Hashing, Session Token Lifecycle and RBAC Authentication` — 100.000 iterasyonlu PBKDF2-HMAC-SHA512 parola tuzlama, timingSafeEqual doğrulama, HMAC-SHA256 imzalı oturum tokenı üretimi ve RBAC rol matrisi: **GEÇTİ**
 
 ---
 
@@ -110,11 +111,18 @@
 10. **Aşama 10: Win32 Named Pipe IPC Session 0 ↔ Session 1 İzolasyonu:**
     - Section 5 gereğince Session 0 izole sistem servisi (RemoteMMAgent --service) ile Session 1 aktif kullanıcı masaüstü işçisi (RemoteMMAgent --session-worker) arasında saf Win32 kernel32.dll borusu (CreateNamedPipeW, ConnectNamedPipe, CreateFileW).
     - SDDL DACL D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU) ile standart/ayrıcalıksız kullanıcı oturumlarının boruya güvenli erişimi ve 4-baytlık I uzunluk ön ekli çerçeveli mesajlaşma (gent/named_pipe_ipc.py).
-    - Toplam 45 otomatik test (35 Python, 10 Node.js) — %100 Başarı Oranı.
+    - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.
 
 
 11. **Aşama 11: Saf Win32 Süreç & Güç Yöneticisi ve Kernel Kill Kalkanı:**
     - Section 6.1 gereğince harici PowerShell (Get-Process) ve shell (taskkill, shutdown) süreçleri tamamen terk edildi. Doğrudan kernel32.dll (CreateToolhelp32Snapshot, Process32FirstW, Process32NextW), psapi.dll (GetProcessMemoryInfo), dvapi32.dll (InitiateSystemShutdownExW, LookupAccountSidW) ve user32.dll (LockWorkStation) ile mikrosaniye hızında saf Win32 süreç ve güç yönetimi (gent/system_manager.py) kodlandı.
     - System, smss.exe, csrss.exe, wininit.exe, services.exe, lsass.exe, svchost.exe, RemoteMM_Agent.exe için ACCESS_DENIED_CRITICAL_PROCESS koruma kalkanı işletildi.
     - React NOC arayüzünde süreçlerin RAM boyutları gösterildi ve korumalı sistem süreçlerine 🛡️ rozeti eklendi.
-    - Toplam 45 otomatik test (35 Python, 10 Node.js) — %100 Başarı Oranı.
+    - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.
+
+
+12. **Aşama 12: Çok Kiracılı Operatör Yönetimi, PBKDF2 Kimlik Doğrulama ve Oturum RBAC Motoru:**
+    - Section 3.3 gereğince `operators` tablosu (`id`, `tenant_id`, `username`, `email`, `password_hash`, `role`, `is_mfa_enabled`, `mfa_secret`, `created_at`) SQLite veritabanına bağlandı ve `server/auth.js` modülü yazıldı.
+    - 100.000 iterasyonlu `PBKDF2-HMAC-SHA512` parola tuzlama, zamanlama saldırısı korumalı doğrulama ve `rmm_sess` imzalı oturum token'ları devreye alındı.
+    - React arayüzüne Tab 8 "Operatörler ve RBAC" sekmesi ve "Yeni Operatör Ekle" modalı entegre edildi.
+    - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.

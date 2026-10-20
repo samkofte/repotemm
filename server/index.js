@@ -11,6 +11,7 @@ import { pushDeployAgent } from './deployer.js';
 import { sendWakeOnLan, getMacFromIp } from './wol.js';
 import { registry } from './registry.js';
 import { auditLogger } from './audit.js';
+import { authManager } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -32,8 +33,93 @@ app.get('/api/health', (req, res) => {
     service: 'RemoteMM Enterprise Gateway & NOC Hub',
     port: PORT,
     agentVersion: CURRENT_AGENT_VERSION,
-    registeredDevices: registry.getAllDevices().length
+    registeredDevices: registry.getAllDevices().length,
+    activeOperators: authManager.listOperators().length
   });
+});
+
+// Authentication: Operator Login
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const result = authManager.authenticate(username, password);
+  if (!result.success) {
+    auditLogger.logAction({
+      tenantId: 'tenant_default',
+      operatorId: username || 'unknown',
+      actionType: 'OPERATOR_LOGIN_FAILED',
+      parameters: { reason: result.reason },
+      status: 'FAILED',
+      operatorIp: req.ip
+    });
+    return res.status(401).json({ success: false, error: 'Kullanıcı adı veya şifre hatalı.', reason: result.reason });
+  }
+
+  auditLogger.logAction({
+    tenantId: result.operator.tenantId,
+    operatorId: result.operator.username,
+    actionType: 'OPERATOR_LOGIN_SUCCESS',
+    parameters: { role: result.operator.role },
+    status: 'SUCCESS',
+    operatorIp: req.ip
+  });
+
+  res.json({ success: true, token: result.token, operator: result.operator });
+});
+
+// Authentication: Validate Session Token / Profile
+app.get('/api/auth/me', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (req.query.token || '');
+  const verified = authManager.verifySessionToken(token);
+  if (!verified.valid) {
+    return res.status(401).json({ success: false, error: 'Oturum geçersiz veya süresi dolmuş.', reason: verified.reason });
+  }
+  res.json({ success: true, operator: verified.payload });
+});
+
+// Operator Management: List operators
+app.get('/api/operators', (req, res) => {
+  const tenantId = req.query.tenantId || null;
+  res.json({ success: true, operators: authManager.listOperators(tenantId) });
+});
+
+// Operator Management: Create operator
+app.post('/api/operators', (req, res) => {
+  try {
+    const { tenantId, username, email, password, role } = req.body || {};
+    const newOp = authManager.createOperator({ tenantId, username, email, password, role });
+    auditLogger.logAction({
+      tenantId: newOp.tenantId,
+      operatorId: 'admin',
+      actionType: 'OPERATOR_CREATED',
+      parameters: { newOperator: newOp.username, role: newOp.role },
+      status: 'SUCCESS',
+      operatorIp: req.ip
+    });
+    res.json({ success: true, operator: newOp });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Operator Management: Delete operator
+app.delete('/api/operators/:id', (req, res) => {
+  try {
+    const id = req.params.id;
+    const ok = authManager.deleteOperator(id);
+    if (!ok) return res.status(404).json({ success: false, error: 'Operatör bulunamadı.' });
+    auditLogger.logAction({
+      tenantId: 'tenant_default',
+      operatorId: 'admin',
+      actionType: 'OPERATOR_DELETED',
+      parameters: { deletedOperatorId: id },
+      status: 'SUCCESS',
+      operatorIp: req.ip
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
 // Central Registry: Get registered enterprise devices
@@ -401,8 +487,24 @@ wss.on('connection', (ws, req) => {
   const password = params.get('password') || '';
   const targetMac = params.get('mac') || '';
   const forceReinstall = params.get('force') === 'true' || params.get('reinstall') === 'true';
-  const operatorRole = (params.get('role') || 'SUPER_ADMIN').toUpperCase();
   const requireConsent = params.get('consent') === 'true';
+
+  const sessionToken = params.get('token') || params.get('sessionToken') || '';
+  let username = params.get('username') || 'Administrator';
+  let operatorRole = (params.get('role') || 'SUPER_ADMIN').toUpperCase();
+  let tenantId = 'tenant_default';
+
+  if (sessionToken) {
+    const verified = authManager.verifySessionToken(sessionToken);
+    if (verified.valid) {
+      username = verified.payload.username;
+      operatorRole = verified.payload.role;
+      tenantId = verified.payload.tenantId || 'tenant_default';
+      console.log(`[Gateway] Authenticated session token for operator: ${username} (Role: ${operatorRole})`);
+    } else {
+      console.warn(`[Gateway] Invalid or expired session token: ${verified.reason}. Falling back to default.`);
+    }
+  }
 
   console.log(`[Gateway] Initiating session to ${targetHost}:${targetPort} (operator: ${username}, role: ${operatorRole}, consent: ${requireConsent})...`);
 

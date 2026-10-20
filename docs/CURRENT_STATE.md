@@ -87,7 +87,8 @@ flowchart LR
 | **Uçtan Uca (E2E) TCP Entegrasyonu** | ✅ Tamamlandı | Canlı TCP el sıkışma, dinamik stream geçişleri, PING/PONG gecikme ve sohbet döngüsü. |
 | **Win32 Named Pipe IPC** | ✅ Tamamlandı | Session 0 (SYSTEM Servisi) ↔ Session 1 (Masaüstü İşçisi) yalıtımı, SDDL DACL güvenliği (`agent/named_pipe_ipc.py`). |
 | **Saf Win32 Süreç & Güç Yöneticisi** | ✅ Tamamlandı | Toolhelp32 & PSAPI ile mikrosaniyelik süreç listeleme, Kernel Kill Kalkanı, Native Win32 Güç Yönetimi (`agent/system_manager.py`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (35/35 passed) ve Node.js test runner (10/10 passed) — Toplam 45 test %100 Başarılı. |
+| **Operatör & RBAC Oturum Motoru** | ✅ Tamamlandı | PBKDF2-HMAC-SHA512 tuzlanmış parola güvenliği, kriptografik HMAC-SHA256 oturum token'ları, Operatör Yönetim Paneli (`server/auth.js`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (35/35 passed) ve Node.js test runner (11/11 passed) — Toplam 46 test %100 Başarılı. |
 
 ---
 
@@ -160,3 +161,10 @@ flowchart LR
     - **Saf Win32 Güç Yönetimi:** `os.system('shutdown ...')` ve `os.system('rundll32 ...')` tamamen kaldırıldı. `SeShutdownPrivilege` yetki yükseltmesi ile `advapi32.InitiateSystemShutdownExW`, `user32.LockWorkStation`, `powrprof.SetSuspendState` ve `advapi32.AbortSystemShutdownW` API'leri entegre edildi.
     - **NOC Arayüz Zenginleştirmesi:** React NOC panelinde (Tab 3 ve HUD) süreçlerin RAM boyutları gösterildi ve korumalı sistem süreçlerine `🛡️ Korumalı` rozeti yerleştirilerek yetkisiz sonlandırma butonu kilitlendi.
     - Toplam 45 otomatik test (35 Python, 10 Node.js) — %100 Başarı Oranı.
+
+12. **Aşama 12: Çok Kiracılı Operatör Yönetimi, PBKDF2 Kimlik Doğrulama ve Oturum RBAC Motoru (TAMAMLANDI)**
+    - **Operatör & RBAC Veritabanı (Bölüm 3.3):** Şartname Bölüm 3.3 gereğince `operators` tablosu (`id`, `tenant_id`, `username`, `email`, `password_hash`, `role`, `is_mfa_enabled`, `mfa_secret`, `created_at`) SQLite veritabanına bağlandı ve `server/auth.js` modülü yazıldı.
+    - **Kriptografik Güvenlik ve Tuzlama:** Operatör parolaları 100.000 iterasyonlu `PBKDF2-HMAC-SHA512` ve 16-bayt rastgele tuz (`salt`) ile saklandı; doğrulama `crypto.timingSafeEqual` ile zamanlama saldırılarına (timing attacks) karşı korumalı hale getirildi.
+    - **HMAC-SHA256 İmzalı Oturum Token'ları:** Oturum açan operatörlere `rmm_sess.<payload>.<hmacSignature>` formatında kurumsal oturum token'ı üretildi; WebSocket bağlantılarında bu token doğrulanarak query parametresi üzerinden sahte rol (`role=SUPER_ADMIN`) gönderilmesinin önüne geçildi.
+    - **NOC Yönetim Sekmesi (Tab 8):** React paneline "Operatörler & RBAC" sekmesi ve "Yeni Operatör Ekle" modalı eklenerek çok kiracılı operatör listesi, rol rozetleri ve canlı hesap yönetimi arayüze kazandırıldı.
+    - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.

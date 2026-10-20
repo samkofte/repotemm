@@ -11,7 +11,9 @@ if %errorlevel% neq 0 (
 
 echo [RemoteMM] Enterprise Agent Kaldirma Islemi Baslatiliyor...
 
-REM 1. Calisan Sureci Sonlandir
+REM 1. SCM Servisini ve Calisan Sureci Sonlandir
+sc.exe stop RemoteMMAgent >nul 2>&1
+sc.exe delete RemoteMMAgent >nul 2>&1
 taskkill /F /IM RemoteMM_Agent.exe >nul 2>&1
 
 REM 2. Zamanlanmis Gorevi Sil

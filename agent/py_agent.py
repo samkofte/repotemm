@@ -1410,25 +1410,45 @@ AGENT_VERSION = 'RemoteMM v4.2'
 
 def do_agent_upgrade(conn, cmd):
     url = cmd.get('url', '')
-    if not url: return
+    expected_sha256 = cmd.get('sha256', '')
+    target_version = cmd.get('version', 'vNext')
+    if not url:
+        send_json_safe(conn, {'type': 'UPGRADE_ERROR', 'message': 'Eksik parametre: url zorunludur.'})
+        return
+
     try:
-        import urllib.request
-        send_json_safe(conn, {'type': 'UPGRADE_PROGRESS', 'message': 'Yeni agent sürümü indiriliyor...'})
+        from updater import AutoUpdater
         target_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else r'C:\RemoteMM'
         os.makedirs(target_dir, exist_ok=True)
-        new_exe = os.path.join(target_dir, 'RemoteMM_Agent_new.exe')
         curr_exe = sys.executable if getattr(sys, 'frozen', False) else os.path.join(target_dir, 'RemoteMM_Agent.exe')
-        
-        # Download new binary
-        urllib.request.urlretrieve(url, new_exe)
-        send_json_safe(conn, {'type': 'UPGRADE_PROGRESS', 'message': 'Yeni sürüm indirildi, yeniden başlatılıyor...'})
-        
-        # Batch updater script that waits 2 seconds, kills current process, overwrites, starts service or exe
+
+        updater = AutoUpdater(curr_exe)
+        send_json_safe(conn, {'type': 'UPGRADE_PROGRESS', 'stage': 'DOWNLOADING', 'message': f'Yeni ajan sürümü ({target_version}) güvenle indiriliyor...'})
+
+        # 1. Download binary
+        dl_ok, dl_res = updater.download_from_url(url)
+        if not dl_ok:
+            send_json_safe(conn, {'type': 'UPGRADE_ERROR', 'stage': 'DOWNLOAD', 'message': f'İndirme başarısız: {dl_res}'})
+            return
+
+        # 2. Cryptographic SHA-256 verification and staging
+        send_json_safe(conn, {'type': 'UPGRADE_PROGRESS', 'stage': 'VERIFYING', 'message': 'SHA-256 kriptografik bütünlük doğrulaması yapılıyor...'})
+        stage_ok, stage_msg = updater.stage_update(dl_res, expected_sha256)
+        if not stage_ok:
+            send_json_safe(conn, {'type': 'UPGRADE_ERROR', 'stage': 'TAMPER_DETECTED', 'message': f'Hash doğrulanamadı, sahte/bozuk dosya derhal imha edildi ({stage_msg})'})
+            return
+
+        send_json_safe(conn, {'type': 'UPGRADE_PROGRESS', 'stage': 'STAGING', 'message': 'Mevcut binary yedeklendi (RemoteMM_Agent.bak), yeniden başlatılıyor...'})
+
+        # 3. Batch updater script that waits 2 seconds, kills current process, swaps with backup, starts service or exe
         bat_file = os.path.join(target_dir, 'agent_update.bat')
+        new_exe = updater.temp_binary
+        bak_exe = updater.backup_binary
         with open(bat_file, 'w', encoding='utf-8') as f:
             f.write(f'''@echo off
 timeout /t 2 /nobreak >nul
 taskkill /F /IM RemoteMM_Agent.exe >nul 2>&1
+copy /Y "{curr_exe}" "{bak_exe}" >nul 2>&1
 move /Y "{new_exe}" "{curr_exe}" >nul 2>&1
 sc.exe start RemoteMMAgent >nul 2>&1
 if errorlevel 1 (
@@ -1440,7 +1460,7 @@ del "%~f0"
         time.sleep(0.5)
         os._exit(0)
     except Exception as e:
-        send_json_safe(conn, {'type': 'UPGRADE_ERROR', 'message': str(e)})
+        send_json_safe(conn, {'type': 'UPGRADE_ERROR', 'stage': 'EXCEPTION', 'message': str(e)})
 
 CONSENT_POLICY = False
 
@@ -1723,7 +1743,7 @@ def handle_client(conn, addr):
                         send_json_safe(conn, {'type': 'TASK_KILL_RES', 'pid': pid, 'success': ok, 'message': reason})
                     except Exception as e:
                         send_json_safe(conn, {'type': 'TASK_KILL_RES', 'pid': pid, 'success': False, 'message': str(e)})
-                elif t=='AGENT_UPGRADE':
+                elif t in ('AGENT_UPGRADE', 'UPGRADE_AGENT'):
                     threading.Thread(target=do_agent_upgrade, args=(conn, cmd), daemon=True).start()
                 elif t=='REQUEST_CONSENT':
                     def do_consent():
@@ -1882,7 +1902,7 @@ def try_run_as_service():
     except: pass
 
 def install_agent():
-    r"""Kurumsal sessiz kurulum: C:\RemoteMM altina kopyalar, guvenlik duvari ve SYSTEM gorevi ekler."""
+    r"""Kurumsal sessiz kurulum: C:\RemoteMM altina kopyalar, SCM Self-Healing servisi ve SYSTEM gorevi ekler."""
     print("[RemoteMM] Enterprise Agent Kurulumu Baslatiliyor...")
     target_dir = r"C:\RemoteMM"
     target_exe = os.path.join(target_dir, "RemoteMM_Agent.exe")
@@ -1895,6 +1915,20 @@ def install_agent():
             print(f"[RemoteMM] Ikili dosya kopyalandi: {target_exe}")
         os.system('netsh advfirewall firewall add rule name="RemoteMMAgent" dir=in action=allow protocol=TCP localport=6129 >nul 2>&1')
         os.system('netsh advfirewall firewall add rule name="RemoteMM_WoL_In" dir=in action=allow protocol=UDP localport=7,9 >nul 2>&1')
+
+        # 1. Tercih: Windows SCM (Service Control Manager) ve Self-Healing Watchdog
+        os.system('sc.exe stop RemoteMMAgent >nul 2>&1')
+        os.system('sc.exe delete RemoteMMAgent >nul 2>&1')
+        sc_cmd = f'sc.exe create RemoteMMAgent binPath= "\"{target_exe}\" --service" start= auto obj= "NT AUTHORITY\\System" DisplayName= "RemoteMM Enterprise Agent"'
+        sc_ret = os.system(sc_cmd)
+        if sc_ret == 0:
+            os.system('sc.exe failure RemoteMMAgent reset= 86400 actions= restart/5000/restart/10000/restart/30000 >nul 2>&1')
+            os.system('sc.exe failureflag RemoteMMAgent 1 >nul 2>&1')
+            os.system('sc.exe start RemoteMMAgent >nul 2>&1')
+            print("[RemoteMM] Windows SCM Servisi basariyla kuruldu (Self-Healing Onarim: 5s/10s/30s aktif).")
+            return
+
+        # 2. Tercih (Yedek): Scheduled Task ile SYSTEM baslatma
         os.system('schtasks /delete /tn "RemoteMMAgent" /f >nul 2>&1')
         cmd = f'schtasks /create /tn "RemoteMMAgent" /tr "\"{target_exe}\"" /ru "SYSTEM" /sc ONSTART /rl HIGHEST /f'
         ret = os.system(cmd)
@@ -1903,14 +1937,16 @@ def install_agent():
             os.system('schtasks /run /tn "RemoteMMAgent" >nul 2>&1')
             print("[RemoteMM] Ajan arka planda baslatildi.")
         else:
-            print("[RemoteMM] UYARI: Zamanlanmis gorev olusturulamadi (Yonetici yetkisi gerekebilir).")
+            print("[RemoteMM] UYARI: Servis ve gorev olusturulamadi (Yonetici yetkisi gerekebilir).")
     except Exception as e:
         print(f"[RemoteMM] Kurulum hatasi: {e}")
 
 def uninstall_agent():
-    """Kurumsal temiz kaldirma: Gorevleri, kurallari ve calisan sureci temizler."""
+    """Kurumsal temiz kaldirma: SCM servisini, gorevleri, kurallari ve calisan sureci temizler."""
     print("[RemoteMM] Enterprise Agent Kaldiriliyor...")
     try:
+        os.system('sc.exe stop RemoteMMAgent >nul 2>&1')
+        os.system('sc.exe delete RemoteMMAgent >nul 2>&1')
         os.system('schtasks /delete /tn "RemoteMMAgent" /f >nul 2>&1')
         os.system('taskkill /F /IM "RemoteMM_Agent.exe" >nul 2>&1')
         os.system('netsh advfirewall firewall delete rule name="RemoteMMAgent" >nul 2>&1')

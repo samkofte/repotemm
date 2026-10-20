@@ -113,6 +113,32 @@ class AuditLogger {
     return event;
   }
 
+  logAction(firstArg, targetHost, action, result, parameters, req) {
+    if (typeof firstArg === 'object' && firstArg !== null) {
+      return this.log({
+        tenantId: firstArg.tenantId || 'tenant_default',
+        operator: firstArg.operator || firstArg.operatorId || 'system',
+        operatorIp: firstArg.operatorIp || '127.0.0.1',
+        targetDeviceId: firstArg.targetDeviceId || null,
+        targetHost: firstArg.targetHost || null,
+        action: firstArg.action || firstArg.actionType,
+        parameters: firstArg.parameters || {},
+        result: firstArg.result || firstArg.status || 'SUCCESS',
+        durationMs: firstArg.durationMs || 0,
+        errorMessage: firstArg.errorMessage || null
+      });
+    }
+
+    return this.log({
+      operator: firstArg || 'system',
+      targetHost: targetHost || null,
+      action: action,
+      result: result || 'SUCCESS',
+      parameters: parameters || {},
+      operatorIp: (req && req.ip) ? req.ip : '127.0.0.1'
+    });
+  }
+
   /**
    * Retrieves the latest audit entries for the compliance UI.
    */
@@ -146,4 +172,5 @@ class AuditLogger {
   }
 }
 
+export { AuditLogger };
 export const auditLogger = new AuditLogger();

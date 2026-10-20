@@ -7,7 +7,7 @@ import {
   Edit3, AlertCircle, Unlock, EyeOff, Copy, Globe, Layers, Sliders,
   Radio, Maximize2, Minimize2, Filter, ArrowRight, Clock, Moon,
   Mic, MicOff, Volume2, Bell, Sparkles, Square, RotateCcw, CheckCircle2,
-  Users, UserPlus, UserCheck
+  Users, UserPlus, UserCheck, ArrowUpCircle
 } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'dameware_saved_hosts_v1';
@@ -86,6 +86,13 @@ export default function App() {
   const [newOpRole, setNewOpRole] = useState('NOC_OPERATOR');
   const [clipboardToastText, setClipboardToastText] = useState(null);
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeTargetHost, setUpgradeTargetHost] = useState(null);
+  const [upgradeUrl, setUpgradeUrl] = useState(`http://${window.location.hostname || 'localhost'}:3001/public/RemoteMM_Agent.exe`);
+  const [upgradeSha256, setUpgradeSha256] = useState('');
+  const [upgradeVersion, setUpgradeVersion] = useState('v5.0.0-LTS');
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [upgradeStatusMessage, setUpgradeStatusMessage] = useState(null);
 
   // Mouse / Canvas / Screen state
 
@@ -1448,6 +1455,45 @@ export default function App() {
     }
   };
 
+  const handleDispatchUpgrade = async () => {
+    if (!upgradeUrl || !upgradeSha256) {
+      alert('URL ve beklenen SHA-256 hash alanları zorunludur!');
+      return;
+    }
+    setIsUpgrading(true);
+    setUpgradeStatusMessage('Yükseltme emri Gateway üzerinden hedefe iletiliyor...');
+    try {
+      const payload = {
+        url: upgradeUrl,
+        sha256: upgradeSha256.trim().toLowerCase(),
+        version: upgradeVersion,
+        targets: upgradeTargetHost ? [{ ip: upgradeTargetHost.ip, port: upgradeTargetHost.port || 6129 }] : []
+      };
+      const res = await fetch(`http://${targetHost || 'localhost'}:${targetPort || 3001}/api/fleet/upgrade`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUpgradeStatusMessage(`✅ ${data.message}`);
+        setTimeout(() => {
+          setShowUpgradeModal(false);
+          setIsUpgrading(false);
+          setUpgradeStatusMessage(null);
+        }, 3000);
+      } else {
+        setUpgradeStatusMessage(`❌ Hata: ${data.message || data.error}`);
+        setIsUpgrading(false);
+      }
+    } catch (err) {
+      setUpgradeStatusMessage(`❌ Bağlantı hatası: ${err.message}`);
+      setIsUpgrading(false);
+    }
+  };
+
   useEffect(() => {
     fetchRegisteredDevices();
     fetchOperators();
@@ -2633,6 +2679,19 @@ export default function App() {
                   <span>{isPollingFleet ? 'Taranıyor...' : 'Yenile'}</span>
                 </button>
 
+                {/* Fleet Upgrade Button */}
+                <button
+                  onClick={() => {
+                    setUpgradeTargetHost(null);
+                    setShowUpgradeModal(true);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 text-xs font-semibold flex items-center gap-1.5 transition shadow-[0_0_10px_rgba(168,85,247,0.2)]"
+                  title="Tüm Filoya veya Seçili Sunuculara Güvenli Sürüm Güncellemesi Gönder (Auto-Rollback Destekli)"
+                >
+                  <ArrowUpCircle className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Filoyu Güncelle</span>
+                </button>
+
                 <button
                   onClick={() => setActiveModal('addHost')}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(56,189,248,0.25)] transition"
@@ -3074,6 +3133,19 @@ export default function App() {
                           </>
                         )}
                       </div>
+
+                      {/* Upgrade Agent */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUpgradeTargetHost(h);
+                          setShowUpgradeModal(true);
+                        }}
+                        className="p-2.5 rounded-xl bg-slate-900 hover:bg-purple-500/20 text-slate-400 hover:text-purple-400 border border-slate-800 transition"
+                        title="Bu makineye güvenli sürüm güncellemesi gönder (Auto-Rollback)"
+                      >
+                        <ArrowUpCircle className="w-4 h-4" />
+                      </button>
 
                       {/* Reinstall Agent */}
                       <button
@@ -4295,6 +4367,131 @@ export default function App() {
       {/* ─────────────────────────────────────────────────────────────
           MODALS
       ───────────────────────────────────────────────────────────── */}
+
+      {/* MODAL: FLEET / AGENT REMOTE UPGRADE */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-[520px] glass-card rounded-2xl border border-purple-500/30 overflow-hidden shadow-[0_0_40px_rgba(168,85,247,0.2)] animate-in zoom-in-95 duration-150">
+            <div className="h-12 px-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+              <span className="font-bold text-sm text-slate-100 flex items-center gap-2">
+                <ArrowUpCircle className="w-4 h-4 text-purple-400" /> Ajan Sürüm Yükseltme (Auto-Rollback Destekli)
+              </span>
+              <button
+                onClick={() => {
+                  if (!isUpgrading) {
+                    setShowUpgradeModal(false);
+                    setUpgradeStatusMessage(null);
+                  }
+                }}
+                disabled={isUpgrading}
+                className="text-slate-400 hover:text-white disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              {/* Target info badge */}
+              <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] text-purple-300 font-semibold uppercase tracking-wider">Hedef Dağıtım Kapsamı</div>
+                  <div className="font-bold text-slate-200 mt-0.5">
+                    {upgradeTargetHost ? `${upgradeTargetHost.name} (${upgradeTargetHost.ip})` : `Tüm Filo (${allHosts.length} Düğüm)`}
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-mono text-[11px] font-bold">
+                  {upgradeTargetHost ? 'TEKİL DÜĞÜM' : 'TOPLU FİLO'}
+                </span>
+              </div>
+
+              {/* Version & URL */}
+              <div>
+                <label className="text-slate-300 font-semibold mb-1 block">Hedef Sürüm Etiketi:</label>
+                <input
+                  type="text"
+                  value={upgradeVersion}
+                  onChange={(e) => setUpgradeVersion(e.target.value)}
+                  placeholder="Örn: v5.0.0-LTS"
+                  disabled={isUpgrading}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold mb-1 block">İndirme URL'si (HTTPS / HTTP):</label>
+                <input
+                  type="text"
+                  value={upgradeUrl}
+                  onChange={(e) => setUpgradeUrl(e.target.value)}
+                  placeholder="http://gateway:3001/public/RemoteMM_Agent.exe"
+                  disabled={isUpgrading}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 font-mono"
+                />
+              </div>
+
+              {/* SHA-256 */}
+              <div>
+                <label className="text-slate-300 font-semibold mb-1 block flex items-center justify-between">
+                  <span>Beklenen SHA-256 Özeti:</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Kriptografik Bütünlük</span>
+                </label>
+                <input
+                  type="text"
+                  value={upgradeSha256}
+                  onChange={(e) => setUpgradeSha256(e.target.value)}
+                  placeholder="64-karakterlik SHA-256 hash giriniz..."
+                  disabled={isUpgrading}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 font-mono text-[11px]"
+                />
+              </div>
+
+              {/* Safety notice */}
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <div className="flex items-center gap-1.5 font-semibold text-slate-300">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Auto-Rollback Güvenlik Kalkanı:</span>
+                </div>
+                <p>
+                  Dosya indirildikten sonra SHA-256 doğrulanır. Uyuşmazlık durumunda dosya derhal imha edilir.
+                  Başarılı yüklemede mevcut binary <code className="text-cyan-300 font-mono">.bak</code> olarak yedeklenir;
+                  30 saniye içinde sağlık sinyali alınamazsa otomatik eski sürüme dönülür.
+                </p>
+              </div>
+
+              {upgradeStatusMessage && (
+                <div className="p-3 rounded-xl bg-slate-900 border border-purple-500/30 text-slate-200 font-mono text-[11px] flex items-center gap-2">
+                  {isUpgrading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-400" />}
+                  <span>{upgradeStatusMessage}</span>
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUpgradeModal(false);
+                    setUpgradeStatusMessage(null);
+                  }}
+                  disabled={isUpgrading}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition disabled:opacity-50"
+                >
+                  Kapat
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDispatchUpgrade}
+                  disabled={isUpgrading || !upgradeUrl || !upgradeSha256}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.3)] transition disabled:opacity-50"
+                >
+                  <ArrowUpCircle className="w-4 h-4" />
+                  <span>{isUpgrading ? 'İşleniyor...' : 'Yükseltmeyi Başlat'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: ADD OPERATOR */}
       {showAddOperatorModal && (

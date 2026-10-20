@@ -92,7 +92,8 @@ flowchart LR
 | **Adaptif Akış & Geri Basınç Motoru** | ✅ Tamamlandı | Otonom RTT EMA gecikme izleme, 4 kademeli dinamik kalite/FPS uyarlama, 256KB Gateway geri basınç düşürme (`agent/stream_throttler.py`). |
 | **Oturum İşçisi Canlı Gözetmeni (Supervisor)** | ✅ Tamamlandı | Win32 Session 0 izolasyonu, WTS konsol oturumu keşfi, CreateProcessAsUserW enjeksiyonu, kayan pencereli çökme kalkanı (`agent/session_supervisor.py`). |
 | **Docker Compose & Nginx Gateway Dağıtımı** | ✅ Tamamlandı | Gateway Hub için node:22-alpine konteyneri, Nginx HTTPS/WSS ters vekil, kalıcı SQLite hacmi, sağlık denetimi (`docker-compose.yml`, `nginx/`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (56/56 passed) ve Node.js test runner (11/11 passed) — Toplam 67 test %100 Başarılı. |
+| **Canlı Filo Güncelleme & SCM Onarım** | ✅ Tamamlandı | Auto-Rollback durum makinesi, SHA-256 tahrifat imhası, SCM 5s/10s/30s failure kurtarma, Gateway `/api/fleet/upgrade` ve NOC Paneli (`agent/updater.py`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (62/62 passed) ve Node.js test runner (12/12 passed) — Toplam 74 test %100 Başarılı. |
 
 ---
 
@@ -212,3 +213,10 @@ flowchart LR
     - **Çapraz Platform Yönetim Araçları:** Linux VPS sunucuları için `scripts/docker-manage.sh` ve Windows yöneticileri için `scripts/docker-manage.ps1` yönetim CLI'ları yazıldı (`up`, `down`, `restart`, `status`, `logs`, `health`, `backup`).
     - **Geliştirici SSL Sertifika Üreticisi:** Yerel veya test VPS ortamında anında HTTPS/WSS testleri yapılabilmesi için `scripts/generate-dev-certs.sh` ve `scripts/generate-dev-certs.ps1` araçları sağlandı.
     - Toplam 67 otomatik test (56 Python, 11 Node.js) — %100 Başarı Oranı.
+
+17. **Aşama 17: Canlı Filo Güncelleme Motoru (Fleet Remote Upgrade), SCM Kendi Kendini Onarma ve NOC Auto-Rollback (TAMAMLANDI)**
+    - **Ajan Güncelleme Motoru (`agent/updater.py`):** Şartname Bölüm 7.2 gereğince yeni ajan ikili dosyalarını güvenli URL üzerinden indiren, 50MB sınır korumalı, hash uyuşmazlığında dosyayı anında diskten silen (`TAMPER_DETECTED_SHA256_MISMATCH` / `HASH_VERIFICATION_FAILED`) ve mevcut binary'yi `RemoteMM_Agent.bak` olarak yedekleyen Auto-Rollback motoru tamamlandı.
+    - **Windows SCM Kendi Kendini Onarma (Self-Healing Watchdog):** `install_agent()` ve `scripts/install-agent.bat` güncellenerek SCM arıza kurtarma kuralları (`sc.exe failure RemoteMMAgent reset= 86400 actions= restart/5000/restart/10000/restart/30000`) uygulandı. Servis çökse dahi Windows SCM tarafından 5s, 10s ve 30s içinde otomatik yeniden başlatılır.
+    - **Gateway Filo Güncelleme Uç Noktası (`/api/fleet/upgrade`):** Operatör oturum belirteci (`rmm_sess`) ve RBAC rol denetimi (salt-okunur `AUDITOR` rolü kesinlikle engellenir) ile yetkilendirilmiş, tekil düğüm veya toplu filoya TCP soketi üzerinden `AGENT_UPGRADE` emri gönderen REST API eklendi. Tüm operasyonlar ISO 27001 denetim kütüğüne mühürlendi.
+    - **React NOC Paneli Entegrasyonu:** Filo (Sunucular) grid toolbar'ına "🚀 Filoyu Güncelle" butonu ve her sunucu kartına hızlı güncelleme butonu yerleştirildi; SHA-256 doğrulama, hedef sürüm girişi ve canlı durum göstergeli kurumsal modal tamamlandı.
+    - Toplam 74 otomatik test (62 Python, 12 Node.js) — %100 Başarı Oranı.

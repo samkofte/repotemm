@@ -19,8 +19,9 @@
   - `tests/test_stream_throttler.py` (3 test)
   - `tests/test_session_supervisor.py` (9 test)
   - `tests/test_docker_deployment.py` (5 test)
-* **Toplam Python Test Sayısı:** 56
-* **Geçen:** 56
+  - `tests/test_updater_workflow.py` (6 test)
+* **Toplam Python Test Sayısı:** 62
+* **Geçen:** 62
 * **Başarısız:** 0
 * **Atlanan:** 0
 * **Süre:** 0.259s
@@ -81,14 +82,20 @@
   54. `test_nginx_reverse_proxy_configuration` — `tests/test_docker_deployment.py`: Nginx upstream, Connection Upgrade haritalaması, 86400s WebSocket zaman aşımı ve 35M gövde sınırı: **GEÇTİ**
   55. `test_env_example_completeness` — `tests/test_docker_deployment.py`: .env.example şablonu, zorunlu ortam değişkenleri ve üretim gizli anahtar uyarıları: **GEÇTİ**
   56. `test_management_scripts_exist_and_executable` — `tests/test_docker_deployment.py`: docker-manage ve generate-dev-certs çapraz platform yönetim betiklerinin doğrulanması: **GEÇTİ**
+  57. `test_sha256_calculation_and_verification` — `tests/test_updater_workflow.py`: AutoUpdater SHA-256 hesaplama ve büyük/küçük harf duyarsız özet doğrulaması: **GEÇTİ**
+  58. `test_stage_update_with_tamper_destruction` — `tests/test_updater_workflow.py`: Tahrif edilmiş / bozuk dosyanın tespiti ve diskten anında kalıcı imhası: **GEÇTİ**
+  59. `test_backup_and_apply_update` — `tests/test_updater_workflow.py`: Güncelleme öncesi mevcut binary'nin .bak olarak yedeklenmesi ve atomik dosya değişimi: **GEÇTİ**
+  60. `test_rollback_restore_state` — `tests/test_updater_workflow.py`: Başarısızlık durumunda .bak yedeğinin otomatik geri yüklenmesi (Rollback): **GEÇTİ**
+  61. `test_complete_update_verification` — `tests/test_updater_workflow.py`: 30 saniyelik sağlık sinyaline göre yedeği temizleme (commit) veya geri alma: **GEÇTİ**
+  62. `test_execute_upgrade_workflow_dry_run` — `tests/test_updater_workflow.py`: İndirme, doğrulama ve sahneleme tam iş akışının dry-run yürütülmesi: **GEÇTİ**
 
 ---
 
 ### B. Gateway, Merkezi Kayıt (Registry), Denetim İzi (Audit), RMM2 ve WoL Testleri
 * **Komut:** `node --test tests/test_gateway_state.mjs`
 * **Dosya:** `tests/test_gateway_state.mjs`
-* **Test Sayısı:** 11
-* **Geçen:** 11
+* **Test Sayısı:** 12
+* **Geçen:** 12
 * **Başarısız:** 0
 * **Atlanan:** 0
 * **Süre:** 194.3ms
@@ -104,6 +111,7 @@
   9. `RMM2 Binary Framing Codec: Packet Encoding, Decoding and Partial Chunk Stream Parsing` — 12 bayt RMM2 ikili başlık, TCP parçalanma simülasyonu ve tam kare birleştirme: **GEÇTİ**
   10. `Wake-on-LAN: Directed Subnet Broadcast Calculation and Multi-Target Generation` — CIDR, /24, /16 alt ağ yayın adresi hesabı ve VLAN geçişli çoklu hedef üretimi: **GEÇTİ**
   11. `AuthManager: PBKDF2 Password Hashing, Session Token Lifecycle and RBAC Authentication` — 100.000 iterasyonlu PBKDF2-HMAC-SHA512 parola tuzlama, timingSafeEqual doğrulama, HMAC-SHA256 imzalı oturum tokenı üretimi ve RBAC rol matrisi: **GEÇTİ**
+  12. `Fleet Upgrade: Parameter Verification, AUDITOR Role Blocking and Audit Trail Logging` — AUDITOR rolünün filo güncellemesini engelleme, SUPER_ADMIN izin doğrulama ve FLEET_UPGRADE_INITIATED denetim izi kütük kaydı: **GEÇTİ**
 
 ---
 
@@ -187,3 +195,10 @@
     - Nginx üzerinde WebSocket `Upgrade` başlıkları, 24 saatlik (`86400s`) akış zaman aşımı ve 35MB gövde boyutu yapılandırıldı.
     - Çapraz platform yönetim (`docker-manage.sh`, `docker-manage.ps1`) ve geliştirici SSL sertifika üretim (`generate-dev-certs.sh`, `generate-dev-certs.ps1`) betikleri eklendi.
     - Toplam 67 otomatik test (56 Python, 11 Node.js) — %100 Başarı Oranı.
+
+17. **Aşama 17: Canlı Filo Güncelleme Motoru (Fleet Remote Upgrade), SCM Kendi Kendini Onarma ve NOC Auto-Rollback:**
+    - Şartname Bölüm 7.2 gereğince `agent/updater.py` Auto-Rollback durum makinesi geliştirildi; URL üzerinden güvenli indirme, 50MB güvenlik sınırı, SHA-256 tahrifat imhası (`HASH_VERIFICATION_FAILED`) ve `.bak` yedekleme doğrulandı.
+    - Windows SCM (Service Control Manager) kendi kendini onarma yapılandırıcısı (`sc failure RemoteMMAgent reset= 86400 actions= restart/5000/restart/10000/restart/30000`) ajan kurulumuna ve bat betiklerine entegre edildi.
+    - Gateway üzerinde `/api/fleet/upgrade` REST uç noktası kodlandı; RBAC rol denetimi (salt-okunur AUDITOR engeli), TCP üzerinden `AGENT_UPGRADE` emri sevkiyatı ve ISO 27001 denetim izi mühürlemesi sağlandı.
+    - React NOC paneline "🚀 Filoyu Güncelle" araç çubuğu butonu, sunucu kartı güncelleme butonu ve SHA-256 doğrulamalı yükseltme modalı entegre edildi.
+    - Toplam 74 otomatik test (62 Python, 12 Node.js) — %100 Başarı Oranı.

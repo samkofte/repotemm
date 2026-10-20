@@ -335,3 +335,44 @@ test('AuthManager: PBKDF2 Password Hashing, Session Token Lifecycle and RBAC Aut
   assert.strictEqual(auth.authenticate('test_tech', 'tech_password_123').success, false);
 });
 
+test('Fleet Upgrade: Parameter Verification, AUDITOR Role Blocking and Audit Trail Logging', async () => {
+  const { AuthManager } = await import('../server/auth.js');
+  const { AuditLogger } = await import('../server/audit.js');
+
+  const auth = new AuthManager();
+  const audit = new AuditLogger();
+
+  // 1. AUDITOR token generation
+  const auditorLogin = auth.authenticate('auditor1', 'auditor_pass_2026');
+  assert.strictEqual(auditorLogin.success, true);
+  assert.strictEqual(auditorLogin.operator.role, 'AUDITOR');
+
+  // Verify that an AUDITOR cannot dispatch upgrade actions
+  const tokenVerify = auth.verifySessionToken(auditorLogin.token);
+  assert.strictEqual(tokenVerify.valid, true);
+  assert.strictEqual(tokenVerify.payload.role, 'AUDITOR');
+
+  const canUpgrade = tokenVerify.payload.role === 'SUPER_ADMIN' || tokenVerify.payload.role === 'NOC_OPERATOR';
+  assert.strictEqual(canUpgrade, false, 'AUDITOR role must never be allowed to upgrade fleet agents');
+
+  // 2. SUPER_ADMIN token validation
+  const adminLogin = auth.authenticate('admin', 'admin');
+  assert.strictEqual(adminLogin.success, true);
+  const adminVerify = auth.verifySessionToken(adminLogin.token);
+  const adminCanUpgrade = adminVerify.payload.role === 'SUPER_ADMIN' || adminVerify.payload.role === 'NOC_OPERATOR';
+  assert.strictEqual(adminCanUpgrade, true);
+
+  // 3. Audit trail verification for fleet upgrade events
+  audit.logAction('admin', '192.168.1.100', 'FLEET_UPGRADE_INITIATED', 'SUCCESS', {
+    version: 'v5.0.0-LTS',
+    sha256: 'a1b2c3d4e5f60000...'
+  });
+
+  const recent = audit.getRecentLogs(5);
+  const upgradeLog = recent.find(l => l.action === 'FLEET_UPGRADE_INITIATED');
+  assert.ok(upgradeLog, 'Audit log must record FLEET_UPGRADE_INITIATED event');
+  assert.strictEqual(upgradeLog.operator, 'admin');
+  assert.strictEqual(upgradeLog.targetHost, '192.168.1.100');
+  assert.strictEqual(upgradeLog.parameters.version, 'v5.0.0-LTS');
+});
+

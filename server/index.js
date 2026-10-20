@@ -419,6 +419,97 @@ app.post('/api/fleet/status', async (req, res) => {
   res.json({ success: true, statuses: results });
 });
 
+// Filo veya tekil ajan uzaktan guncelleme emri (Remote Fleet Upgrade)
+app.post('/api/fleet/upgrade', async (req, res) => {
+  const { targets = [], url, sha256, version = 'vNext', token } = req.body || {};
+
+  // 1. RBAC & Oturum Dogrulama
+  const authHeader = req.headers.authorization;
+  const sessionToken = token || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null);
+  
+  let operator = 'sec_admin';
+  let operatorRole = 'SUPER_ADMIN';
+
+  if (sessionToken) {
+    const verified = authManager.verifySessionToken(sessionToken);
+    if (!verified.valid) {
+      return res.status(401).json({ success: false, error: 'INVALID_SESSION_TOKEN' });
+    }
+    operator = verified.payload.username;
+    operatorRole = verified.payload.role;
+  }
+
+  // Salt okunur AUDITOR rolunun guncelleme yapmasi kesinlikle yasaktir
+  if (operatorRole === 'AUDITOR') {
+    auditLogger.logAction(operator, 'FLEET', 'FLEET_UPGRADE_REJECTED', 'PERMISSION_DENIED', { reason: 'AUDITOR_ROLE_CANNOT_UPGRADE' }, req);
+    return res.status(403).json({ success: false, error: 'PERMISSION_DENIED', message: 'Denetçi (Auditor) rolü ajan güncelleyemez.' });
+  }
+
+  if (!url || !sha256) {
+    return res.status(400).json({ success: false, error: 'MISSING_PARAMETERS', message: 'url ve sha256 alanları zorunludur.' });
+  }
+
+  // Hedef listesini normalize et
+  let targetList = Array.isArray(targets) ? targets : [];
+  if (req.body.host) {
+    targetList.push({ ip: req.body.host, port: req.body.port || 6129 });
+  }
+
+  if (targetList.length === 0) {
+    const registered = registry.getAllDevices();
+    targetList = registered.map(d => ({ ip: d.ip, port: d.port || 6129, id: d.id, hostname: d.hostname }));
+  }
+
+  const results = [];
+  const upgradePayload = JSON.stringify({
+    type: 'AGENT_UPGRADE',
+    url,
+    sha256,
+    version
+  }) + '\n';
+
+  for (const t of targetList) {
+    const targetIp = t.ip || t.host;
+    const targetPort = parseInt(t.port || 6129, 10);
+    try {
+      const client = new net.Socket();
+      client.setTimeout(2000);
+      const dispatched = await new Promise((resolve) => {
+        client.connect(targetPort, targetIp, () => {
+          client.write(upgradePayload);
+          setTimeout(() => {
+            client.destroy();
+            resolve(true);
+          }, 200);
+        });
+        client.on('error', () => {
+          client.destroy();
+          resolve(false);
+        });
+        client.on('timeout', () => {
+          client.destroy();
+          resolve(false);
+        });
+      });
+
+      results.push({ target: `${targetIp}:${targetPort}`, dispatched });
+      if (dispatched) {
+        auditLogger.logAction(operator, targetIp, 'FLEET_UPGRADE_DISPATCHED', 'SUCCESS', { version, sha256: sha256.substring(0, 16) + '...' }, req);
+      } else {
+        auditLogger.logAction(operator, targetIp, 'FLEET_UPGRADE_FAILED', 'CONNECT_ERROR', { version }, req);
+      }
+    } catch (err) {
+      results.push({ target: `${targetIp}:${targetPort}`, dispatched: false, error: err.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    message: `${results.filter(r => r.dispatched).length}/${targetList.length} cihaza güncelleme emri iletildi.`,
+    results
+  });
+});
+
 export function getBestLocalIp(targetHost = '') {
   const ifaces = os.networkInterfaces();
   const candidates = [];

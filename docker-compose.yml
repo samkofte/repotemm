@@ -1,0 +1,46 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: remotemm-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-3001}:3001"
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts:ro
+      - ./public:/app/public:ro
+    environment:
+      - PORT=3001
+      - NODE_ENV=${NODE_ENV:-production}
+      - JWT_SECRET=${JWT_SECRET:-remotemm_dev_secret_change_in_prod}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - remotemm-net
+
+  proxy:
+    image: nginx:alpine
+    container_name: remotemm-proxy
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - remotemm-net
+
+networks:
+  remotemm-net:
+    driver: bridge

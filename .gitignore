@@ -35,3 +35,9 @@ build/
 data/*.db
 data/audit_logs/*.jsonl
 
+
+# Environment secrets & SSL certificates
+.env
+nginx/certs/*.pem
+nginx/certs/*.key
+nginx/certs/*.crt

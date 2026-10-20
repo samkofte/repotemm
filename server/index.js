@@ -144,6 +144,38 @@ app.get('/api/devices', (req, res) => {
   res.json({ success: true, devices: registry.getAllDevices(tenantId) });
 });
 
+// Central Registry: Dynamic Heartbeat & Self-Registration Endpoint
+app.post('/api/devices/heartbeat', (req, res) => {
+  try {
+    const { hwid, hostname, primaryIp, osName, cpuModel, totalRamMb, agentVersion, telemetry } = req.body;
+    if (!hwid) {
+      return res.status(400).json({ success: false, error: 'MISSING_HWID' });
+    }
+
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
+    const effectiveIp = primaryIp || clientIp.replace(/^::ffff:/, '');
+
+    const result = registry.registerOrAuthenticate({
+      hwid,
+      systemInfo: {
+        hostname: hostname || 'Workstation',
+        os: osName || 'Windows 11 Enterprise',
+        cpu: cpuModel || 'Generic CPU',
+        totalRamBytes: (totalRamMb || 8192) * 1024 * 1024,
+        agentVersion: agentVersion || CURRENT_AGENT_VERSION
+      }
+    }, effectiveIp);
+
+    if (telemetry) {
+      registry.recordTelemetry(hwid, telemetry);
+    }
+
+    res.json({ success: true, device: result.device });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Compliance & Audit Logs: Get recent operations trail
 app.get('/api/audit/logs', (req, res) => {
   const limit = parseInt(req.query.limit || '100', 10);

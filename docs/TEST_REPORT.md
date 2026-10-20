@@ -14,8 +14,10 @@
   - `tests/test_agent_protocol.py` (23 test)
   - `tests/test_security_bounds.py` (5 test)
   - `tests/test_e2e_connection.py` (4 test)
-* **Toplam Python Test Sayısı:** 35
-* **Geçen:** 35
+  - `tests/test_system_manager.py` (3 test)
+  - `tests/test_file_manager.py` (4 test)
+* **Toplam Python Test Sayısı:** 39
+* **Geçen:** 39
 * **Başarısız:** 0
 * **Atlanan:** 0
 * **Süre:** 0.259s
@@ -52,6 +54,13 @@
   30. `test_e2e_ping_pong_latency` — PING/PONG ile gidiş-dönüş ağ gecikmesi ölçümü: **GEÇTİ**
   31. `test_e2e_stream_modes_switching` — PREVIEW (küçük resim) ve INTERACTIVE (ekran karesi) modları arası geçiş: **GEÇTİ**
   32. `test_e2e_chat_broadcast` — Canlı operatör ve son kullanıcı sohbet mesajlaşma yayını: **GEÇTİ**
+  33. `test_native_process_enumeration` — `tests/test_system_manager.py`: Pure Win32 Toolhelp32Snapshot ve PSAPI GetProcessMemoryInfo ile mikrosaniyelik süreç listeleme: **GEÇTİ**
+  34. `test_kernel_critical_process_kill_protection` — `tests/test_system_manager.py`: System, csrss, lsass, services koruması ve ACCESS_DENIED denetimi: **GEÇTİ**
+  35. `test_power_action_whitelist_and_dry_run` — `tests/test_system_manager.py`: Win32 InitiateSystemShutdownExW ve LockWorkStation izin listesi ve abort mekanizması: **GEÇTİ**
+  36. `test_path_traversal_blocking` — `tests/test_file_manager.py`: SAM, SYSTEM ve drivers/etc gibi hassas sistem dizinlerine erişim atlamalarının engellenmesi: **GEÇTİ**
+  37. `test_256kb_chunked_upload_and_sha256_verification` — `tests/test_file_manager.py`: 256 KB dilimli parçalı yükleme durum makinesi ve SHA-256 bütünlük doğrulaması: **GEÇTİ**
+  38. `test_tamper_detection_immediate_deletion` — `tests/test_file_manager.py`: SHA-256 tahrifatı tespit edildiğinde parçalı dosyanın diskten anında imha edilmesi: **GEÇTİ**
+  39. `test_chunked_download_streaming` — `tests/test_file_manager.py`: 256 KB dilimli dosya indirme metadata hazırlığı ve akış halinde parça okuma: **GEÇTİ**
 
 ---
 
@@ -111,18 +120,25 @@
 10. **Aşama 10: Win32 Named Pipe IPC Session 0 ↔ Session 1 İzolasyonu:**
     - Section 5 gereğince Session 0 izole sistem servisi (RemoteMMAgent --service) ile Session 1 aktif kullanıcı masaüstü işçisi (RemoteMMAgent --session-worker) arasında saf Win32 kernel32.dll borusu (CreateNamedPipeW, ConnectNamedPipe, CreateFileW).
     - SDDL DACL D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU) ile standart/ayrıcalıksız kullanıcı oturumlarının boruya güvenli erişimi ve 4-baytlık I uzunluk ön ekli çerçeveli mesajlaşma (gent/named_pipe_ipc.py).
-    - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.
+    - Toplam 50 otomatik test (39 Python, 11 Node.js) — %100 Başarı Oranı.
 
 
 11. **Aşama 11: Saf Win32 Süreç & Güç Yöneticisi ve Kernel Kill Kalkanı:**
     - Section 6.1 gereğince harici PowerShell (Get-Process) ve shell (taskkill, shutdown) süreçleri tamamen terk edildi. Doğrudan kernel32.dll (CreateToolhelp32Snapshot, Process32FirstW, Process32NextW), psapi.dll (GetProcessMemoryInfo), dvapi32.dll (InitiateSystemShutdownExW, LookupAccountSidW) ve user32.dll (LockWorkStation) ile mikrosaniye hızında saf Win32 süreç ve güç yönetimi (gent/system_manager.py) kodlandı.
     - System, smss.exe, csrss.exe, wininit.exe, services.exe, lsass.exe, svchost.exe, RemoteMM_Agent.exe için ACCESS_DENIED_CRITICAL_PROCESS koruma kalkanı işletildi.
     - React NOC arayüzünde süreçlerin RAM boyutları gösterildi ve korumalı sistem süreçlerine 🛡️ rozeti eklendi.
-    - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.
+    - Toplam 50 otomatik test (39 Python, 11 Node.js) — %100 Başarı Oranı.
 
 
 12. **Aşama 12: Çok Kiracılı Operatör Yönetimi, PBKDF2 Kimlik Doğrulama ve Oturum RBAC Motoru:**
     - Section 3.3 gereğince `operators` tablosu (`id`, `tenant_id`, `username`, `email`, `password_hash`, `role`, `is_mfa_enabled`, `mfa_secret`, `created_at`) SQLite veritabanına bağlandı ve `server/auth.js` modülü yazıldı.
     - 100.000 iterasyonlu `PBKDF2-HMAC-SHA512` parola tuzlama, zamanlama saldırısı korumalı doğrulama ve `rmm_sess` imzalı oturum token'ları devreye alındı.
     - React arayüzüne Tab 8 "Operatörler ve RBAC" sekmesi ve "Yeni Operatör Ekle" modalı entegre edildi.
-    - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.
+    - Toplam 50 otomatik test (39 Python, 11 Node.js) — %100 Başarı Oranı.
+
+
+13. **Aşama 13: 256 KB Parçalı Dosya Transfer Motoru ve SHA-256 Tahrifat Kalkanı:**
+    - Section 3.2 ve 6.2 gereğince büyük dosyaları 256 KB dilimler halinde (FILE_CHUNK) bellekte şişme yapmaksızın aktaran `agent/file_manager.py` yazıldı.
+    - Dosya transferi bittiğinde hedefte hesaplanan SHA-256 özeti operatörün gönderdiği özetle uyuşmazsa dosya anında imha edilir (TAMPER_DETECTED_SHA256_MISMATCH).
+    - SAM, SYSTEM, drivers/etc ve gizli NTFS veri akışları tüm dosya eylemlerinde (FS_LIST, FS_DOWNLOAD, FS_UPLOAD, FS_DELETE, FS_MKDIR, FS_EXEC) engellendi.
+    - Toplam 50 otomatik test (39 Python, 11 Node.js) — %100 Başarı Oranı.

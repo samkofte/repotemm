@@ -922,11 +922,20 @@ def send_json_safe(conn, obj):
 def handle_fs(conn, cmd):
     t = cmd.get('type', '')
     try:
+        from file_manager import (
+            is_safe_path, upload_manager,
+            get_file_metadata_for_download, read_file_chunk
+        )
+
         if t == 'FS_LIST':
             req_path = cmd.get('path', 'C:\\')
             if not req_path or req_path == '.':
                 req_path = 'C:\\'
             req_path = os.path.abspath(req_path)
+            if not is_safe_path(req_path):
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': 'Erişim Engellendi: Bu sistem dizinine erişim yetkiniz bulunmamaktadır.'})
+                return
+
             drives = get_drives()
             entries = []
             if os.path.exists(req_path) and os.path.isdir(req_path):
@@ -956,10 +965,13 @@ def handle_fs(conn, cmd):
 
         elif t == 'FS_DOWNLOAD':
             fpath = cmd.get('path', '')
+            if not is_safe_path(fpath):
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': 'Erişim Engellendi: Bu dosya korumalı sistem dizininde yer almaktadır.'})
+                return
             if os.path.isfile(fpath):
                 sz = os.path.getsize(fpath)
                 if sz > 25 * 1024 * 1024:
-                    send_json_safe(conn, {'type':'FS_ERROR','message':'Dosya 25MB sinirini asiyor.'})
+                    send_json_safe(conn, {'type':'FS_ERROR','message':'Dosya 25MB tekil aktarım sınırını aşıyor. Lütfen parçalı (chunked) indirme kullanın.'})
                     return
                 with open(fpath, 'rb') as f:
                     content = f.read()
@@ -977,6 +989,9 @@ def handle_fs(conn, cmd):
 
         elif t == 'FS_UPLOAD':
             fpath = cmd.get('path', '')
+            if not is_safe_path(fpath):
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': 'Erişim Engellendi: Bu dizine dosya yükleme yetkiniz bulunmamaktadır.'})
+                return
             b64_data = cmd.get('data', '')
             expected_sha256 = cmd.get('sha256', '').strip()
             content = base64.b64decode(b64_data)
@@ -993,6 +1008,9 @@ def handle_fs(conn, cmd):
 
         elif t == 'FS_DELETE':
             fpath = cmd.get('path', '')
+            if not is_safe_path(fpath):
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': 'Erişim Engellendi: Bu dosya veya dizini silme yetkiniz bulunmamaktadır.'})
+                return
             if os.path.isdir(fpath):
                 import shutil
                 shutil.rmtree(fpath, ignore_errors=True)
@@ -1003,15 +1021,80 @@ def handle_fs(conn, cmd):
 
         elif t == 'FS_MKDIR':
             fpath = cmd.get('path', '')
+            if not is_safe_path(fpath):
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': 'Erişim Engellendi: Bu konumda klasör oluşturma yetkiniz bulunmamaktadır.'})
+                return
             os.makedirs(fpath, exist_ok=True)
             res = {'type': 'FS_MKDIR_RES', 'path': fpath, 'success': True}
             send_json_safe(conn, res)
 
         elif t == 'FS_EXEC':
             fpath = cmd.get('path', '')
+            if not is_safe_path(fpath):
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': 'Erişim Engellendi: Bu konudaki dosya çalıştırılamaz.'})
+                return
             os.system(f'start "" "{fpath}"')
             res = {'type': 'FS_EXEC_RES', 'path': fpath, 'success': True}
             send_json_safe(conn, res)
+
+        # ── 256 KB Parçalı (Chunked) Dosya Transfer Komutları (Bölüm 3.2 & 6.2) ──
+        elif t == 'FS_CHUNK_START_UPLOAD':
+            upload_id = cmd.get('uploadId', f'upl_{int(time.time()*1000)}')
+            fpath = cmd.get('path', '')
+            total_chunks = int(cmd.get('totalChunks', 1))
+            total_size = int(cmd.get('totalSize', 0))
+            expected_sha = cmd.get('sha256', '')
+
+            ok, msg = upload_manager.start_upload(upload_id, fpath, total_chunks, total_size, expected_sha)
+            if ok:
+                send_json_safe(conn, {'type': 'FS_CHUNK_START_ACK', 'uploadId': upload_id, 'path': fpath, 'status': 'READY'})
+            else:
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': f'Parçalı transfer başlatılamadı: {msg}', 'uploadId': upload_id})
+
+        elif t == 'FS_CHUNK_UPLOAD':
+            upload_id = cmd.get('uploadId', '')
+            chunk_idx = int(cmd.get('chunkIndex', 0))
+            b64_data = cmd.get('data', '')
+            chunk_bytes = base64.b64decode(b64_data)
+
+            ok, msg, meta = upload_manager.write_chunk(upload_id, chunk_idx, chunk_bytes)
+            if ok:
+                send_json_safe(conn, {'type': 'FS_CHUNK_ACK', **meta})
+            else:
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': f'Parça yazılamadı: {msg}', 'uploadId': upload_id, 'chunkIndex': chunk_idx})
+
+        elif t == 'FS_CHUNK_FINALIZE':
+            upload_id = cmd.get('uploadId', '')
+            ok, msg, res_data = upload_manager.finalize_upload(upload_id)
+            if ok:
+                send_json_safe(conn, {'type': 'FS_CHUNK_COMPLETE', 'uploadId': upload_id, 'success': True, **res_data})
+            else:
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': f'Dosya bütünlük doğrulaması başarısız: {msg}', 'uploadId': upload_id, **res_data})
+
+        elif t == 'FS_CHUNK_PREPARE_DOWNLOAD':
+            fpath = cmd.get('path', '')
+            ok, msg, meta = get_file_metadata_for_download(fpath)
+            if ok:
+                send_json_safe(conn, {'type': 'FS_CHUNK_DOWNLOAD_INFO', **meta})
+            else:
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': f'Dosya hazırlanamadı: {msg}'})
+
+        elif t == 'FS_CHUNK_READ':
+            fpath = cmd.get('path', '')
+            chunk_idx = int(cmd.get('chunkIndex', 0))
+            ok, chunk_bytes, err = read_file_chunk(fpath, chunk_idx)
+            if ok:
+                b64 = base64.b64encode(chunk_bytes).decode('ascii')
+                send_json_safe(conn, {
+                    'type': 'FS_CHUNK_DATA',
+                    'path': fpath,
+                    'chunkIndex': chunk_idx,
+                    'data': b64,
+                    'chunkSize': len(chunk_bytes)
+                })
+            else:
+                send_json_safe(conn, {'type': 'FS_ERROR', 'message': f'Parça okunamadı: {err}'})
+
     except Exception as e:
         send_json_safe(conn, {'type':'FS_ERROR','message':str(e)})
 

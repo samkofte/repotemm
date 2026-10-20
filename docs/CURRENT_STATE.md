@@ -88,7 +88,8 @@ flowchart LR
 | **Win32 Named Pipe IPC** | ✅ Tamamlandı | Session 0 (SYSTEM Servisi) ↔ Session 1 (Masaüstü İşçisi) yalıtımı, SDDL DACL güvenliği (`agent/named_pipe_ipc.py`). |
 | **Saf Win32 Süreç & Güç Yöneticisi** | ✅ Tamamlandı | Toolhelp32 & PSAPI ile mikrosaniyelik süreç listeleme, Kernel Kill Kalkanı, Native Win32 Güç Yönetimi (`agent/system_manager.py`). |
 | **Operatör & RBAC Oturum Motoru** | ✅ Tamamlandı | PBKDF2-HMAC-SHA512 tuzlanmış parola güvenliği, kriptografik HMAC-SHA256 oturum token'ları, Operatör Yönetim Paneli (`server/auth.js`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (35/35 passed) ve Node.js test runner (11/11 passed) — Toplam 46 test %100 Başarılı. |
+| **256 KB Parçalı Transfer & Güvenli Dosya** | ✅ Tamamlandı | 256 KB chunked upload/download, SHA-256 anlık tahrifat imhası, SAM/SYSTEM yol koruması (`agent/file_manager.py`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (39/39 passed) ve Node.js test runner (11/11 passed) — Toplam 50 test %100 Başarılı. |
 
 ---
 
@@ -168,3 +169,9 @@ flowchart LR
     - **HMAC-SHA256 İmzalı Oturum Token'ları:** Oturum açan operatörlere `rmm_sess.<payload>.<hmacSignature>` formatında kurumsal oturum token'ı üretildi; WebSocket bağlantılarında bu token doğrulanarak query parametresi üzerinden sahte rol (`role=SUPER_ADMIN`) gönderilmesinin önüne geçildi.
     - **NOC Yönetim Sekmesi (Tab 8):** React paneline "Operatörler & RBAC" sekmesi ve "Yeni Operatör Ekle" modalı eklenerek çok kiracılı operatör listesi, rol rozetleri ve canlı hesap yönetimi arayüze kazandırıldı.
     - Toplam 46 otomatik test (35 Python, 11 Node.js) — %100 Başarı Oranı.
+
+13. **Aşama 13: 256 KB Parçalı Dosya Transfer Motoru ve SHA-256 Tahrifat Kalkanı (TAMAMLANDI)**
+    - **256 KB Parçalı Akış Durum Makinesi (Bölüm 3.2 & 6.2):** Bellek şişmesini ve tampon taşmasını önlemek amacıyla büyük dosyaları 256 KB dilimler halinde (`FILE_CHUNK` / `FS_CHUNK_*`) aktaran `agent/file_manager.py` yazıldı. Aktarım doğrudan diskteki geçici `.part` dosyasına yazılır ve sıfır RAM birikmesiyle gigabaytlarca veri güvenle taşınır.
+    - **SHA-256 Tahrifat Koruması (Immediate Destruction):** Dosya parçaları tamamlandığında hedef makinede anında SHA-256 özeti hesaplanır. Operatörün gönderdiği özetle uyuşmazlık tespit edildiğinde dosya derhal kalıcı olarak silinir (`TAMPER_DETECTED_SHA256_MISMATCH`) ve işletim sisteminde sahte veri bırakılmaz.
+    - **Sıfır-Güven Dizin Kalkanı (`is_safe_path`):** SAM, SYSTEM kayıt kovanları (`System32\config`), ağ yapılandırmaları (`System32\drivers\etc`), NTFS gizli veri akışları (`:stream`) ve dizin atlama (`..`) girişimleri tüm dosya işlemlerinde (`FS_LIST`, `FS_DOWNLOAD`, `FS_UPLOAD`, `FS_DELETE`, `FS_MKDIR`, `FS_EXEC`) engellendi.
+    - Toplam 50 otomatik test (39 Python, 11 Node.js) — %100 Başarı Oranı.

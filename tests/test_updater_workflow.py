@@ -17,6 +17,7 @@ import hashlib
 from unittest.mock import patch, MagicMock
 
 from agent.updater import AutoUpdater
+from agent.auto_updater_daemon import AutoUpdateDaemon
 
 
 class TestUpdaterWorkflow(unittest.TestCase):
@@ -138,6 +139,59 @@ class TestUpdaterWorkflow(unittest.TestCase):
             self.assertTrue(res['success'])
             self.assertEqual(res['stage'], 'DRY_RUN')
             self.assertEqual(res['targetVersion'], 'v5.1.0')
+
+    def test_auto_update_daemon_discovery_and_report(self):
+        """Tests AutoUpdateDaemon discovery of new version and telemetry reporting."""
+        daemon = AutoUpdateDaemon(
+            server_url="http://mock-gw:3001",
+            current_version="5.0.0",
+            hwid="hwid_test_auto_update_123",
+            current_exe_path=self.current_exe
+        )
+
+        # Mock discovery response
+        mock_response = MagicMock()
+        mock_response.read.return_value = (
+            b'{"success": true, "updateAvailable": true, "release": {"version": "5.2.0", "sha256": "hash123", "downloadUrl": "/dl"}}'
+        )
+        mock_response.__enter__.return_value = mock_response
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            rel = daemon.check_for_updates()
+            self.assertIsNotNone(rel)
+            self.assertEqual(rel["version"], "5.2.0")
+
+        # Mock telemetry report response
+        mock_report_resp = MagicMock()
+        mock_report_resp.status = 200
+        mock_report_resp.__enter__.return_value = mock_report_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_report_resp):
+            rep_ok = daemon.send_update_report(status="SUCCESS", to_version="5.2.0")
+            self.assertTrue(rep_ok)
+
+    def test_auto_update_daemon_post_update_health_verification(self):
+        """Tests that verify_post_update_health confirms startup and cleans backup file."""
+        daemon = AutoUpdateDaemon(
+            server_url="http://mock-gw:3001",
+            current_version="5.2.0",
+            hwid="hwid_test_health",
+            current_exe_path=self.current_exe
+        )
+
+        # Create dummy backup file indicating update just occurred
+        with open(daemon.updater.backup_binary, "wb") as f:
+            f.write(b"PREVIOUS_VERSION_BACKUP")
+
+        with patch.object(daemon, "send_update_report", return_value=True) as mock_report:
+            verified = daemon.verify_post_update_health()
+            self.assertTrue(verified)
+            mock_report.assert_called_once_with(
+                status="SUCCESS",
+                to_version="5.2.0",
+                error_message="Booted healthy into updated binary"
+            )
+            self.assertFalse(os.path.exists(daemon.updater.backup_binary))
 
 
 if __name__ == '__main__':

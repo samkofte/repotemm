@@ -13,6 +13,7 @@ import { sendWakeOnLan, getMacFromIp } from './wol.js';
 import { registry } from './registry.js';
 import { auditLogger } from './audit.js';
 import { authManager } from './auth.js';
+import { releaseManager } from './releaseManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -525,6 +526,112 @@ app.post('/api/fleet/upgrade', async (req, res) => {
   });
 });
 
+// ==========================================
+// OTA Release Management & Fleet Auto-Update
+// ==========================================
+
+// En son yayinlanan surumu sorgula (Ajanlar tarafindan periyodik cagrilir)
+app.get('/api/releases/latest', (req, res) => {
+  const channel = req.query.channel || 'stable';
+  const currentVersion = req.query.currentVersion || '1.0.0';
+  const hwid = req.query.hwid || '';
+
+  const result = releaseManager.getLatestRelease({ channel, currentVersion, hwid });
+  if (result.updateAvailable && result.release) {
+    const hostHeader = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3001';
+    let dlUrl = result.release.downloadUrl;
+    if (dlUrl.startsWith('/')) {
+      dlUrl = `http://${hostHeader}${dlUrl}`;
+    }
+    return res.json({
+      success: true,
+      updateAvailable: true,
+      release: {
+        ...result.release,
+        downloadUrl: dlUrl
+      }
+    });
+  }
+
+  res.json({
+    success: true,
+    updateAvailable: false,
+    ...result
+  });
+});
+
+// Yayinlanan tum surumleri listele
+app.get('/api/releases', (req, res) => {
+  res.json({
+    success: true,
+    releases: releaseManager.listReleases()
+  });
+});
+
+// Yeni bir ajan surumu yayinla (Super Admin / Admin)
+app.post('/api/releases/publish', (req, res) => {
+  const operator = req.headers['x-operator-user'] || 'system';
+  const role = (req.headers['x-operator-role'] || 'SUPER_ADMIN').toUpperCase();
+
+  if (role === 'AUDITOR') {
+    return res.status(403).json({ success: false, error: 'PERMISSION_DENIED', message: 'Denetçi rolü yeni sürüm yayınlayamaz.' });
+  }
+
+  try {
+    const release = releaseManager.publishRelease(req.body);
+    broadcastOtaRelease(release);
+    auditLogger.logAction(operator, 'FLEET', 'RELEASE_PUBLISHED', 'SUCCESS', {
+      version: release.version,
+      channel: release.channel,
+      sha256: release.sha256.substring(0, 16) + '...'
+    }, req);
+
+    res.json({
+      success: true,
+      message: `Sürüm v${release.version} başarıyla yayınlandı ve filoya duyuruldu.`,
+      release
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Ajan guncelleme durum raporu (Success / Rollback / Failed)
+app.post('/api/releases/report', (req, res) => {
+  try {
+    const report = releaseManager.recordReport(req.body);
+
+    if (report.status === 'SUCCESS' && report.hwid && report.toVersion) {
+      const dev = registry.getDeviceByHwid(report.hwid);
+      if (dev) {
+        dev.agentVersion = report.toVersion.startsWith('v') ? `RemoteMM Enterprise ${report.toVersion}` : `RemoteMM Enterprise v${report.toVersion}`;
+      }
+    }
+
+    auditLogger.logAction(
+      report.hwid,
+      report.hostname || 'UNKNOWN',
+      'AGENT_UPDATE_REPORT',
+      report.status,
+      { from: report.fromVersion, to: report.toVersion, error: report.errorMessage },
+      req
+    );
+
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Filo surum dagilimi ve OTA metrikleri
+app.get('/api/fleet/release-stats', (req, res) => {
+  const stats = releaseManager.getFleetStats(registry.getAllDevices());
+  res.json({
+    success: true,
+    ...stats
+  });
+});
+
 export function getBestLocalIp(targetHost = '') {
   const ifaces = os.networkInterfaces();
   const candidates = [];
@@ -591,6 +698,24 @@ app.post('/api/agent/deploy', async (req, res) => {
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+export function broadcastOtaRelease(release) {
+  const msg = JSON.stringify({
+    type: 'OTA_RELEASE_ANNOUNCED',
+    version: release.version,
+    channel: release.channel,
+    sha256: release.sha256,
+    downloadUrl: release.downloadUrl,
+    mandatory: release.mandatory
+  });
+  if (wss && wss.clients) {
+    for (const client of wss.clients) {
+      if (client.readyState === 1) { // WebSocket.OPEN
+        try { client.send(msg); } catch (e) {}
+      }
+    }
+  }
+}
 
 wss.on('connection', (ws, req) => {
   const params = new URLSearchParams(req.url.replace('/?', ''));

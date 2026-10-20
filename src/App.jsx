@@ -90,9 +90,13 @@ export default function App() {
   const [upgradeTargetHost, setUpgradeTargetHost] = useState(null);
   const [upgradeUrl, setUpgradeUrl] = useState(`http://${window.location.hostname || 'localhost'}:3001/public/RemoteMM_Agent.exe`);
   const [upgradeSha256, setUpgradeSha256] = useState('');
-  const [upgradeVersion, setUpgradeVersion] = useState('v5.0.0-LTS');
+  const [upgradeVersion, setUpgradeVersion] = useState('v5.1.0');
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [upgradeStatusMessage, setUpgradeStatusMessage] = useState(null);
+  const [otaMode, setOtaMode] = useState('publish');
+  const [otaCanaryPct, setOtaCanaryPct] = useState(100);
+  const [otaReleaseNotes, setOtaReleaseNotes] = useState('Performans optimizasyonları ve güvenlik güncellemeleri.');
+  const [fleetStats, setFleetStats] = useState(null);
 
   // Mouse / Canvas / Screen state
 
@@ -1494,10 +1498,68 @@ export default function App() {
     }
   };
 
+  const fetchFleetStats = async () => {
+    try {
+      const res = await fetch(`http://${targetHost || 'localhost'}:${targetPort || 3001}/api/fleet/release-stats`);
+      const data = await res.json();
+      if (data.success) {
+        setFleetStats(data);
+      }
+    } catch (e) {}
+  };
+
+  const handlePublishOtaRelease = async () => {
+    if (!upgradeVersion || !upgradeSha256) {
+      alert('Sürüm numarası ve SHA-256 hash alanları zorunludur!');
+      return;
+    }
+    setIsUpgrading(true);
+    setUpgradeStatusMessage('Yeni sürüm sunucuya kaydediliyor ve filoya anons ediliyor...');
+    try {
+      const payload = {
+        version: upgradeVersion.replace(/^v/, ''),
+        channel: 'stable',
+        sha256: upgradeSha256.trim().toLowerCase(),
+        downloadUrl: upgradeUrl,
+        releaseNotes: otaReleaseNotes,
+        mandatory: false,
+        rolloutPct: Number(otaCanaryPct)
+      };
+      const res = await fetch(`http://${targetHost || 'localhost'}:${targetPort || 3001}/api/releases/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Operator-Role': 'SUPER_ADMIN'
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUpgradeStatusMessage(`✅ ${data.message}`);
+        fetchFleetStats();
+        setTimeout(() => {
+          setShowUpgradeModal(false);
+          setIsUpgrading(false);
+          setUpgradeStatusMessage(null);
+        }, 3000);
+      } else {
+        setUpgradeStatusMessage(`❌ Hata: ${data.message || data.error}`);
+        setIsUpgrading(false);
+      }
+    } catch (err) {
+      setUpgradeStatusMessage(`❌ Bağlantı hatası: ${err.message}`);
+      setIsUpgrading(false);
+    }
+  };
+
   useEffect(() => {
     fetchRegisteredDevices();
     fetchOperators();
-    const interval = setInterval(fetchRegisteredDevices, 4000);
+    fetchFleetStats();
+    const interval = setInterval(() => {
+      fetchRegisteredDevices();
+      fetchFleetStats();
+    }, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -4368,13 +4430,13 @@ export default function App() {
           MODALS
       ───────────────────────────────────────────────────────────── */}
 
-      {/* MODAL: FLEET / AGENT REMOTE UPGRADE */}
+      {/* MODAL: FLEET / AGENT REMOTE UPGRADE & OTA RELEASE HUB */}
       {showUpgradeModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-[520px] glass-card rounded-2xl border border-purple-500/30 overflow-hidden shadow-[0_0_40px_rgba(168,85,247,0.2)] animate-in zoom-in-95 duration-150">
-            <div className="h-12 px-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div className="w-[560px] glass-card rounded-2xl border border-purple-500/30 overflow-hidden shadow-[0_0_40px_rgba(168,85,247,0.2)] animate-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+            <div className="h-12 px-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
               <span className="font-bold text-sm text-slate-100 flex items-center gap-2">
-                <ArrowUpCircle className="w-4 h-4 text-purple-400" /> Ajan Sürüm Yükseltme (Auto-Rollback Destekli)
+                <ArrowUpCircle className="w-4 h-4 text-purple-400" /> OTA Sürüm Dağıtım & Ajan Güncelleme Merkezi
               </span>
               <button
                 onClick={() => {
@@ -4390,31 +4452,98 @@ export default function App() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
-              {/* Target info badge */}
-              <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] text-purple-300 font-semibold uppercase tracking-wider">Hedef Dağıtım Kapsamı</div>
-                  <div className="font-bold text-slate-200 mt-0.5">
-                    {upgradeTargetHost ? `${upgradeTargetHost.name} (${upgradeTargetHost.ip})` : `Tüm Filo (${allHosts.length} Düğüm)`}
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-mono text-[11px] font-bold">
-                  {upgradeTargetHost ? 'TEKİL DÜĞÜM' : 'TOPLU FİLO'}
-                </span>
+            <div className="p-6 space-y-4 text-xs overflow-y-auto custom-scrollbar">
+              {/* Mode switch tabs */}
+              <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setOtaMode('publish')}
+                  className={`flex-1 py-1.5 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1.5 ${
+                    otaMode === 'publish'
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> OTA Sunucu Sürümü Yayınla
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOtaMode('direct')}
+                  className={`flex-1 py-1.5 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1.5 ${
+                    otaMode === 'direct'
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <ArrowUpCircle className="w-3.5 h-3.5" /> Doğrudan TCP Tetikleme
+                </button>
               </div>
 
+              {/* Fleet status card */}
+              {fleetStats && (
+                <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-purple-300 font-semibold uppercase tracking-wider">Filo Sürüm Dağılımı:</span>
+                    <span className="text-[11px] font-mono text-emerald-400">
+                      Raporlar: ✅ {fleetStats.reportsSummary?.success || 0} | ↩️ {fleetStats.reportsSummary?.rollback || 0}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {fleetStats.versionDistribution && Object.entries(fleetStats.versionDistribution).map(([ver, count]) => (
+                      <span key={ver} className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 font-mono text-[10px] border border-purple-500/30 font-semibold">
+                        v{ver}: {count} cihaz
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Target info badge (if in direct mode) */}
+              {otaMode === 'direct' && (
+                <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] text-purple-300 font-semibold uppercase tracking-wider">Hedef Dağıtım Kapsamı</div>
+                    <div className="font-bold text-slate-200 mt-0.5">
+                      {upgradeTargetHost ? `${upgradeTargetHost.name} (${upgradeTargetHost.ip})` : `Tüm Filo (${allHosts.length} Düğüm)`}
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-mono text-[11px] font-bold">
+                    {upgradeTargetHost ? 'TEKİL DÜĞÜM' : 'TOPLU FİLO'}
+                  </span>
+                </div>
+              )}
+
               {/* Version & URL */}
-              <div>
-                <label className="text-slate-300 font-semibold mb-1 block">Hedef Sürüm Etiketi:</label>
-                <input
-                  type="text"
-                  value={upgradeVersion}
-                  onChange={(e) => setUpgradeVersion(e.target.value)}
-                  placeholder="Örn: v5.0.0-LTS"
-                  disabled={isUpgrading}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 font-mono"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-semibold mb-1 block">Yayınlanacak Sürüm:</label>
+                  <input
+                    type="text"
+                    value={upgradeVersion}
+                    onChange={(e) => setUpgradeVersion(e.target.value)}
+                    placeholder="Örn: 5.1.0"
+                    disabled={isUpgrading}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 font-mono"
+                  />
+                </div>
+                {otaMode === 'publish' && (
+                  <div>
+                    <label className="text-slate-300 font-semibold mb-1 block flex items-center justify-between">
+                      <span>Kademeli Dağıtım (Canary):</span>
+                      <span className="text-cyan-400 font-mono">%{otaCanaryPct}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="10"
+                      max="100"
+                      step="10"
+                      value={otaCanaryPct}
+                      onChange={(e) => setOtaCanaryPct(Number(e.target.value))}
+                      disabled={isUpgrading}
+                      className="w-full mt-2 accent-purple-500 cursor-pointer"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
@@ -4425,7 +4554,7 @@ export default function App() {
                   onChange={(e) => setUpgradeUrl(e.target.value)}
                   placeholder="http://gateway:3001/public/RemoteMM_Agent.exe"
                   disabled={isUpgrading}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 font-mono"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 font-mono text-[11px]"
                 />
               </div>
 
@@ -4445,16 +4574,29 @@ export default function App() {
                 />
               </div>
 
+              {otaMode === 'publish' && (
+                <div>
+                  <label className="text-slate-300 font-semibold mb-1 block">Sürüm Değişiklik Notları (Release Notes):</label>
+                  <textarea
+                    rows="2"
+                    value={otaReleaseNotes}
+                    onChange={(e) => setOtaReleaseNotes(e.target.value)}
+                    placeholder="Sürüm yenilikleri, hata düzeltmeleri..."
+                    disabled={isUpgrading}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 outline-none focus:border-purple-500 text-[11px]"
+                  />
+                </div>
+              )}
+
               {/* Safety notice */}
               <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 space-y-1">
                 <div className="flex items-center gap-1.5 font-semibold text-slate-300">
                   <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Auto-Rollback Güvenlik Kalkanı:</span>
+                  <span>Sıfır-Kesinti & Auto-Rollback Mekanizması:</span>
                 </div>
                 <p>
-                  Dosya indirildikten sonra SHA-256 doğrulanır. Uyuşmazlık durumunda dosya derhal imha edilir.
-                  Başarılı yüklemede mevcut binary <code className="text-cyan-300 font-mono">.bak</code> olarak yedeklenir;
-                  30 saniye içinde sağlık sinyali alınamazsa otomatik eski sürüme dönülür.
+                  Yeni sürüm yayınlandığında bağlı ajanlar güncellemeyi arka planda indirir ve hash doğrulamasını yapar.
+                  Servis güvenli şekilde güncellenir; açılışta 30 saniye içinde sağlık sinyali alınamazsa otomatik eski binary'ye geri döner (Rollback).
                 </p>
               </div>
 
@@ -4480,12 +4622,18 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleDispatchUpgrade}
+                  onClick={otaMode === 'publish' ? handlePublishOtaRelease : handleDispatchUpgrade}
                   disabled={isUpgrading || !upgradeUrl || !upgradeSha256}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.3)] transition disabled:opacity-50"
                 >
                   <ArrowUpCircle className="w-4 h-4" />
-                  <span>{isUpgrading ? 'İşleniyor...' : 'Yükseltmeyi Başlat'}</span>
+                  <span>
+                    {isUpgrading
+                      ? 'İşleniyor...'
+                      : otaMode === 'publish'
+                      ? 'Yeni Sürümü Yayınla & Filoya Duyur'
+                      : 'Yükseltmeyi Başlat'}
+                  </span>
                 </button>
               </div>
             </div>

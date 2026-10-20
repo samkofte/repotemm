@@ -376,3 +376,61 @@ test('Fleet Upgrade: Parameter Verification, AUDITOR Role Blocking and Audit Tra
   assert.strictEqual(upgradeLog.parameters.version, 'v5.0.0-LTS');
 });
 
+test('ReleaseManager: Semantic Versioning, Canary Rollouts, Release Publishing and Telemetry', async () => {
+  const { ReleaseManager, compareVersions } = await import('../server/releaseManager.js');
+  const rm = new ReleaseManager();
+
+  // 1. Semantic Version comparison
+  assert.strictEqual(compareVersions('5.1.0', '5.0.0'), 1);
+  assert.strictEqual(compareVersions('5.0.0', '5.0.0'), 0);
+  assert.strictEqual(compareVersions('4.9.9', '5.0.0'), -1);
+  assert.strictEqual(compareVersions('v5.2.1', '5.2.0'), 1);
+
+  // 2. Publish new release
+  const rel = rm.publishRelease({
+    version: '5.2.0',
+    channel: 'stable',
+    sha256: '11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff',
+    downloadUrl: '/RemoteMM_Agent_v5.2.0.exe',
+    fileName: 'RemoteMM_Agent_v5.2.0.exe',
+    fileSize: 18000000,
+    releaseNotes: 'OTA Self-Update Engine',
+    mandatory: true,
+    rolloutPct: 100
+  });
+  assert.strictEqual(rel.version, '5.2.0');
+  assert.strictEqual(rel.mandatory, true);
+
+  // 3. Discovery query from older agent
+  const checkOld = rm.getLatestRelease({ channel: 'stable', currentVersion: '5.0.0', hwid: 'device_abc_1' });
+  assert.strictEqual(checkOld.updateAvailable, true);
+  assert.strictEqual(checkOld.release.version, '5.2.0');
+
+  // 4. Discovery query from updated agent
+  const checkUpdated = rm.getLatestRelease({ channel: 'stable', currentVersion: '5.2.0', hwid: 'device_abc_1' });
+  assert.strictEqual(checkUpdated.updateAvailable, false);
+  assert.strictEqual(checkUpdated.reason, 'ALREADY_UP_TO_DATE');
+
+  // 5. Update Telemetry report recording
+  const rep = rm.recordReport({
+    hwid: 'device_abc_1',
+    hostname: 'DESKTOP-TEST',
+    fromVersion: '5.0.0',
+    toVersion: '5.2.0',
+    status: 'SUCCESS',
+    errorMessage: 'OTA update completed cleanly'
+  });
+  assert.ok(rep.id.startsWith('rep_'));
+  assert.strictEqual(rep.status, 'SUCCESS');
+
+  // 6. Fleet statistics aggregation
+  const fleetStats = rm.getFleetStats([
+    { id: '1', hostname: 'DEV-1', agentVersion: '5.2.0' },
+    { id: '2', hostname: 'DEV-2', agentVersion: '5.0.0' }
+  ]);
+  assert.strictEqual(fleetStats.totalDevices, 2);
+  assert.strictEqual(fleetStats.versionDistribution['5.2.0'], 1);
+  assert.strictEqual(fleetStats.versionDistribution['5.0.0'], 1);
+  assert.ok(fleetStats.reportsSummary.success >= 1);
+});
+

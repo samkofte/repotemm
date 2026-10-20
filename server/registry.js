@@ -28,9 +28,10 @@ if (!fs.existsSync(DATA_DIR)) {
 const DB_PATH = path.join(DATA_DIR, 'remotemm_enterprise.db');
 
 export class DeviceRegistry {
-  constructor() {
+  constructor(dbPath = null) {
     this.devices = new Map();
     this.tenants = new Map();
+    this.dbPath = dbPath || DB_PATH;
     this.initDatabase();
   }
 
@@ -46,7 +47,7 @@ export class DeviceRegistry {
 
     if (DatabaseSync) {
       try {
-        this.db = new DatabaseSync(DB_PATH);
+        this.db = new DatabaseSync(this.dbPath);
         this.db.exec(`
 
         CREATE TABLE IF NOT EXISTS tenants (
@@ -154,8 +155,24 @@ export class DeviceRegistry {
       return { success: true, isNew: false, device: dev };
     }
 
+    // Check if an existing device with the same hostname exists in this tenant, replace stale entry
+    const targetHostName = systemInfo.hostname || '';
+    if (targetHostName) {
+      const existingByHost = Array.from(this.devices.values()).find(
+        d => d.tenantId === tenantId && d.hostname.toLowerCase() === targetHostName.toLowerCase() && d.hwid !== hwid
+      );
+      if (existingByHost) {
+        this.devices.delete(existingByHost.hwid);
+        if (this.db) {
+          try {
+            this.db.prepare('DELETE FROM devices WHERE hwid = ?').run(existingByHost.hwid);
+          } catch (e) {}
+        }
+      }
+    }
+
     // New device registration
-    const newId = `dev_${hwid.substring(0, 12)}`;
+    const newId = `dev_${hwid.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24)}`;
     const newDevice = {
       id: newId,
       tenantId,
@@ -184,7 +201,7 @@ export class DeviceRegistry {
     if (!this.db) return;
     try {
       const stmt = this.db.prepare(`
-        INSERT INTO devices (
+        INSERT OR REPLACE INTO devices (
           id, tenant_id, hwid, hostname, primary_ip, mac_address,
           os_name, cpu_model, total_ram_mb, agent_version, device_token,
           status, last_seen, created_at
@@ -192,17 +209,7 @@ export class DeviceRegistry {
           ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?
-        )
-        ON CONFLICT(hwid) DO UPDATE SET
-          hostname = excluded.hostname,
-          primary_ip = excluded.primary_ip,
-          mac_address = excluded.mac_address,
-          os_name = excluded.os_name,
-          cpu_model = excluded.cpu_model,
-          total_ram_mb = excluded.total_ram_mb,
-          agent_version = excluded.agent_version,
-          status = excluded.status,
-          last_seen = excluded.last_seen;
+        );
       `);
       stmt.run(
         dev.id, dev.tenantId, dev.hwid, dev.hostname, dev.primaryIp, dev.macAddress,
@@ -215,7 +222,12 @@ export class DeviceRegistry {
   }
 
   recordTelemetry(hwid, telemetry) {
-    const dev = this.devices.get(hwid);
+    let dev = this.devices.get(hwid);
+    if (!dev && telemetry && telemetry.hostname) {
+      dev = Array.from(this.devices.values()).find(
+        d => d.hostname.toLowerCase() === telemetry.hostname.toLowerCase()
+      );
+    }
     if (!dev) return false;
 
     dev.lastSeen = Date.now();
@@ -226,7 +238,7 @@ export class DeviceRegistry {
       activeUser: telemetry.activeUser || dev.telemetry?.activeUser || 'User',
       isLocked: Boolean(telemetry.isLocked),
       uptimeSec: telemetry.uptimeSec || 0,
-      alerts: telemetry.alerts || [],
+      alerts: (telemetry.alerts || []).filter(a => a !== 'ALERT_OFFLINE'),
       timestamp: Date.now()
     };
 
@@ -257,6 +269,8 @@ export class DeviceRegistry {
         if (!d.telemetry.alerts.includes('ALERT_OFFLINE')) {
           d.telemetry.alerts.push('ALERT_OFFLINE');
         }
+      } else if (d.telemetry && d.telemetry.alerts) {
+        d.telemetry.alerts = d.telemetry.alerts.filter(a => a !== 'ALERT_OFFLINE');
       }
     }
     if (tenantId) {

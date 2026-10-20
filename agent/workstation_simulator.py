@@ -16,6 +16,7 @@ import random
 import threading
 import argparse
 import base64
+import hashlib
 import urllib.request
 import urllib.error
 from io import BytesIO
@@ -42,10 +43,24 @@ def create_synthetic_frame(hostname: str, ip: str, os_name: str, cpu_pct: float,
     draw.ellipse([width // 4, height // 4, 3 * width // 4, 3 * height // 4], fill=(30, 41, 59))
     draw.ellipse([width // 3, height // 3, 2 * width // 3, 2 * height // 3], fill=(51, 65, 85))
 
+    # Desktop Icons on the left
+    desktop_icons = [
+        ("💻", "Bu Bilgisayar"),
+        ("📁", "Departman Belgeleri"),
+        ("🌐", "Kurumsal Intranet"),
+        ("📊", "ERP & Finans Portali"),
+        ("🗑️", "Geri Donusum")
+    ]
+    for i, (ico, label) in enumerate(desktop_icons):
+        iy = 40 + (i * 85)
+        draw.rectangle([35, iy, 95, iy + 50], fill=(30, 41, 59, 120), outline=(51, 65, 85))
+        draw.text((55, iy + 14), ico, fill=(241, 245, 249))
+        draw.text((25, iy + 55), label[:16], fill=(226, 232, 240))
+
     # Windows 11 Taskbar at the bottom (Height: 48px)
     taskbar_y = height - 48
-    draw.rectangle([0, taskbar_y, width, height], fill=(15, 23, 42, 240))
-    draw.line([0, taskbar_y, width, taskbar_y], fill=(71, 85, 105), width=1)
+    draw.rectangle([0, taskbar_y, width, height], fill=(15, 23, 42))
+    draw.line([0, taskbar_y, width, taskbar_y], fill=(51, 65, 85), width=1)
 
     # Windows Start Logo and Taskbar App Icons (Centered)
     tb_center = width // 2
@@ -56,42 +71,42 @@ def create_synthetic_frame(hostname: str, ip: str, os_name: str, cpu_pct: float,
         draw.text((x + 8, taskbar_y + 12), icon, fill=(241, 245, 249))
 
     # System Tray Clock (Bottom Right)
-    now_str = time.strftime("%H:%M:%S\n%d.%m.%Y")
-    draw.text((width - 90, taskbar_y + 8), now_str, fill=(203, 213, 225))
-
-    # Corporate Watermark Badge (Top Right)
-    badge_x = width - 360
-    draw.rectangle([badge_x, 20, width - 20, 110], fill=(15, 23, 42), outline=(139, 92, 246), width=2)
-    draw.text((badge_x + 15, 28), "RemoteMM Enterprise NOC Workstation", fill=(192, 132, 252))
-    draw.text((badge_x + 15, 48), f"Host: {hostname} ({ip})", fill=(241, 245, 249))
-    draw.text((badge_x + 15, 68), f"OS:   {os_name}", fill=(148, 163, 184))
-    draw.text((badge_x + 15, 88), f"FPS:  30 | Frame: #{frame_idx}", fill=(52, 211, 153))
+    now_str = time.strftime("%H:%M:%S  |  %d.%m.%Y")
+    draw.text((width - 180, taskbar_y + 16), now_str, fill=(148, 163, 184))
 
     # Simulated Live Terminal Window (Centered)
-    win_x1, win_y1 = 120, 80
-    win_x2, win_y2 = 760, 480
+    win_x1, win_y1 = 200, 60
+    win_x2, win_y2 = 1080, 580
     # Window Header
-    draw.rectangle([win_x1, win_y1, win_x2, win_y1 + 32], fill=(30, 41, 59))
-    draw.text((win_x1 + 15, win_y1 + 8), f"PowerShell 7.4 - Administrator: {hostname}", fill=(226, 232, 240))
+    draw.rectangle([win_x1, win_y1, win_x2, win_y1 + 36], fill=(30, 41, 59))
+    draw.text((win_x1 + 18, win_y1 + 10), f"PowerShell 7.4.5 - Administrator: {hostname} ({ip}) - {os_name}", fill=(241, 245, 249))
+    # Window Window Controls (Minimize, Maximize, Close)
+    draw.text((win_x2 - 70, win_y1 + 10), "—  □  ✕", fill=(148, 163, 184))
+
     # Window Body
-    draw.rectangle([win_x1, win_y1 + 32, win_x2, win_y2], fill=(2, 6, 23), outline=(51, 65, 85))
+    draw.rectangle([win_x1, win_y1 + 36, win_x2, win_y2], fill=(2, 6, 23), outline=(51, 65, 85))
 
     terminal_lines = [
-        f"PS C:\\Users\\Admin> Get-ComputerInfo | Select-Object WindowsProductName",
-        f"WindowsProductName: {os_name}",
+        f"Windows PowerShell - RemoteMM Enterprise Management Engine",
+        f"Telif Hakki (C) Microsoft Corporation. Tum haklari saklidir.",
+        f"",
+        f"PS C:\\Users\\Admin> Get-ComputerInfo | Format-List Hostname, OS, Processor, RAM",
+        f"Hostname       : {hostname}",
+        f"OS             : {os_name}",
+        f"Processor      : Intel/AMD Multi-Core Architecture",
         f"PS C:\\Users\\Admin> Get-Service -Name RemoteMMAgent",
         f"Status   Name               DisplayName",
         f"------   ----               -----------",
-        f"Running  RemoteMMAgent      RemoteMM Support Agent (Active RMM2)",
+        f"Running  RemoteMMAgent      RemoteMM Support Agent (Active Protocol RMM2)",
         f"",
-        f"--- CANLI PERFORMANS METRIKLERI ---",
-        f"CPU Kullanim : %{cpu_pct:.1f}  [{'█' * int(cpu_pct / 10)}{'░' * (10 - int(cpu_pct / 10))}]",
-        f"RAM Kullanim : %{ram_pct:.1f}  [{'█' * int(ram_pct / 10)}{'░' * (10 - int(ram_pct / 10))}]",
-        f"Ag Gecikmesi : 1.2 ms | Baglanti: Sifreli (TLS 1.3 / AES-256-GCM)"
+        f"--- CANLI PERFORMANS & AG HUD ---",
+        f"CPU Kullanim   : %{cpu_pct:.1f}  [{'█' * int(cpu_pct / 10)}{'░' * (10 - int(cpu_pct / 10))}]",
+        f"RAM Kullanim   : %{ram_pct:.1f}  [{'█' * int(ram_pct / 10)}{'░' * (10 - int(ram_pct / 10))}]",
+        f"Ag Gecikmesi   : 1.1 ms  |  Aktif Guvenlik: TLS 1.3 / AES-256-GCM  |  Kare: #{frame_idx}"
     ]
     for i, line in enumerate(terminal_lines):
         color = (52, 211, 153) if "Running" in line else ((244, 63, 94) if "CPU" in line and cpu_pct > 70 else (203, 213, 225))
-        draw.text((win_x1 + 15, win_y1 + 45 + (i * 18)), line, fill=color)
+        draw.text((win_x1 + 20, win_y1 + 50 + (i * 22)), line, fill=color)
 
     # Encode to JPEG
     buf = BytesIO()
@@ -117,7 +132,7 @@ class WorkstationSimulator:
         self.os_name = os_name
         self.cpu_model = cpu_model
         self.ram_mb = ram_mb
-        self.hwid = f"hwid_{hostname.lower()}_{hash(hostname) & 0xffffffffffff:012x}"
+        self.hwid = f"hwid_{hostname.lower()}_{hashlib.sha256(hostname.encode('utf-8')).hexdigest()[:12]}"
         self.running = False
         self.frame_counter = 0
 
@@ -161,7 +176,7 @@ class WorkstationSimulator:
 
     def handle_client(self, client_sock: socket.socket):
         print(f"[{self.hostname}] NOC Gateway connected to agent port {self.port}!")
-        client_sock.setblocking(False)
+        client_sock.settimeout(2.0)
 
         # 1. Send Handshake ACK
         handshake_ack = {

@@ -72,7 +72,8 @@ test('Gateway Message Sanitization (Masking Sensitive Passwords)', () => {
 });
 
 test('DeviceRegistry: Registration, Lookup, and Telemetry', async () => {
-  const { registry } = await import('../server/registry.js');
+  const { DeviceRegistry } = await import('../server/registry.js');
+  const registry = new DeviceRegistry(':memory:');
 
   const testHwid = 'test_hwid_enterprise_99887766554433221100';
   const res = registry.registerOrAuthenticate({

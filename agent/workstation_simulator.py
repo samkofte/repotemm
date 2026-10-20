@@ -15,6 +15,7 @@ import select
 import random
 import threading
 import argparse
+import base64
 import urllib.request
 import urllib.error
 from io import BytesIO
@@ -162,21 +163,21 @@ class WorkstationSimulator:
         print(f"[{self.hostname}] NOC Gateway connected to agent port {self.port}!")
         client_sock.setblocking(False)
 
-        # 1. Send Handshake
-        sys_info = {
-            "type": "SYS_INFO",
+        # 1. Send Handshake ACK
+        handshake_ack = {
+            "type": "HANDSHAKE_ACK",
+            "agentVersion": "RemoteMM Enterprise v5.1-Lab",
+            "hostname": self.hostname,
+            "user": f"{self.hostname}\\Administrator",
+            "macAddress": "00:15:5D:AA:BB:CC",
+            "screenWidth": 1280,
+            "screenHeight": 720,
+            "os": self.os_name,
             "hwid": self.hwid,
-            "systemInfo": {
-                "hostname": self.hostname,
-                "os": self.os_name,
-                "cpu": self.cpu_model,
-                "totalRamBytes": self.ram_mb * 1024 * 1024,
-                "agentVersion": "RemoteMM Enterprise v5.1-Lab",
-                "primaryMac": "00:15:5D:AA:BB:CC"
-            }
+            "monitors": [{"id": 0, "name": "Primary Virtual Display", "width": 1280, "height": 720}]
         }
         try:
-            client_sock.sendall((json.dumps(sys_info) + "\n").encode('utf-8'))
+            client_sock.sendall((json.dumps(handshake_ack) + "\n").encode('utf-8'))
         except Exception:
             client_sock.close()
             return
@@ -185,7 +186,7 @@ class WorkstationSimulator:
         while self.running:
             # Check for incoming commands
             try:
-                readable, _, _ = select.select([client_sock], [], [], 0.05)
+                readable, _, _ = select.select([client_sock], [], [], 0.04)
                 if readable:
                     data = client_sock.recv(4096)
                     if not data:
@@ -199,26 +200,28 @@ class WorkstationSimulator:
             except Exception:
                 break
 
-            # Send synthetic video frame at ~20 FPS
+            # Send synthetic video frame at ~16-20 FPS
             self.frame_counter += 1
             cpu = random.uniform(15.0, 50.0)
             ram = random.uniform(40.0, 60.0)
             jpeg_bytes = create_synthetic_frame(self.hostname, self.ip, self.os_name, cpu, ram, self.frame_counter)
 
-            # Send RMM2 binary frame: [MAGIC 4B][TYPE 1B][FLAGS 1B][RES 2B][LEN 4B] + PAYLOAD
-            magic = b"RMM2"
-            pkt_type = bytes([0x10]) # Video frame
-            flags = bytes([0x00])
-            reserved = b"\x00\x00"
-            payload_len = len(jpeg_bytes).to_bytes(4, byteorder='big')
-            header = magic + pkt_type + flags + reserved + payload_len
+            # Send line-delimited JSON SCREEN_FRAME with Base64 JPEG
+            frame_b64 = base64.b64encode(jpeg_bytes).decode('ascii')
+            frame_msg = {
+                "type": "SCREEN_FRAME",
+                "frame": frame_b64,
+                "width": 1280,
+                "height": 720,
+                "timestamp": int(time.time() * 1000)
+            }
 
             try:
-                client_sock.sendall(header + jpeg_bytes)
+                client_sock.sendall((json.dumps(frame_msg) + "\n").encode('utf-8'))
             except Exception:
                 break
 
-            time.sleep(0.05)
+            time.sleep(0.06)
 
         client_sock.close()
         print(f"[{self.hostname}] NOC Gateway disconnected.")

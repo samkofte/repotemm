@@ -474,6 +474,97 @@ class TestAgentProtocol(unittest.TestCase):
         self.assertIsNotNone(read_back_long)
         self.assertLessEqual(len(read_back_long), 65536)
 
+    def test_rmm2_python_binary_codec(self):
+        """Bölüm 3.2 RMM2 İkili Ağ Çerçeveleme (Binary Framing) kodlayıcı, çözücü ve akış parçalama testleri."""
+        from rmm2_protocol import (
+            pack_rmm2_packet, unpack_rmm2_header, RMM2StreamParser,
+            is_rmm2_buffer, PKT_SCREEN_FRAME, PKT_SYSTEM_ACTION,
+            FLAG_JSON, RMM2ProtocolError
+        )
+
+        # 1. Ham ikili ekran çerçevesi (Binary Video Frame) paketleme
+        fake_frame = b"\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x01\x00`\x00`\x00\x00\xFF\xDB\xFF\xD9"
+        packet = pack_rmm2_packet(PKT_SCREEN_FRAME, fake_frame)
+        self.assertTrue(is_rmm2_buffer(packet))
+        self.assertEqual(len(packet), 12 + len(fake_frame))
+
+        pkt_type, flags, payload_len = unpack_rmm2_header(packet[:12])
+        self.assertEqual(pkt_type, PKT_SCREEN_FRAME)
+        self.assertEqual(flags, 0)
+        self.assertEqual(payload_len, len(fake_frame))
+
+        # 2. JSON veri sözlüğü otomatik seri hale getirme ve bayrak kontrolü
+        cmd_dict = {'action': 'LOCK_INPUT', 'locked': True}
+        json_pkt = pack_rmm2_packet(PKT_SYSTEM_ACTION, cmd_dict)
+        j_type, j_flags, j_len = unpack_rmm2_header(json_pkt[:12])
+        self.assertEqual(j_type, PKT_SYSTEM_ACTION)
+        self.assertTrue(bool(j_flags & FLAG_JSON))
+
+        # 3. Parçalanmış TCP Akış Ayrıştırıcısı (RMM2StreamParser)
+        parser = RMM2StreamParser()
+        # Paketi 3 düzensiz parçaya böl
+        p1 = packet[:7]
+        p2 = packet[7:16]
+        p3 = packet[16:]
+
+        self.assertEqual(parser.feed(p1), [])
+        self.assertEqual(parser.feed(p2), [])
+        completed = parser.feed(p3)
+        self.assertEqual(len(completed), 1)
+        res_type, res_flags, res_payload = completed[0]
+        self.assertEqual(res_type, PKT_SCREEN_FRAME)
+        self.assertEqual(res_payload, fake_frame)
+
+        # 4. Hatalı Magic ve Taşma Koruma Sınırları
+        bad_header = b"BADM\x01\x00\x00\x00\x00\x00\x00\x04"
+        with self.assertRaises(RMM2ProtocolError):
+            unpack_rmm2_header(bad_header)
+
+    def test_native_win32_service_manager(self):
+        """Bölüm 6.1 Saf Win32 Advapi32 Servis Kontrol Yöneticisi ve Korumalı Çekirdek Servis testleri."""
+        from service_manager import (
+            is_protected_service, query_service_status,
+            control_service, enum_services_native
+        )
+
+        # 1. Korumalı çekirdek servis denetimi
+        self.assertTrue(is_protected_service('RemoteMMAgent'))
+        self.assertTrue(is_protected_service('remotemmagent'))
+        self.assertTrue(is_protected_service('RpcSs'))
+        self.assertTrue(is_protected_service('EventLog'))
+        self.assertFalse(is_protected_service('NonExistingTestSvc'))
+
+        # 2. Korumalı servisleri durdurma girişiminin doğrudan engellenmesi
+        ok, msg = control_service('RemoteMMAgent', 'stop')
+        self.assertFalse(ok)
+        self.assertIn('strictly forbidden', msg.lower())
+
+        ok_restart, msg_restart = control_service('RpcSs', 'restart')
+        self.assertFalse(ok_restart)
+        self.assertIn('strictly forbidden', msg_restart.lower())
+
+        # 3. Geçersiz eylemlerin reddedilmesi
+        ok_inv, msg_inv = control_service('SomeService', 'destroy')
+        self.assertFalse(ok_inv)
+        self.assertIn('invalid action', msg_inv.lower())
+
+        # 4. Standart Windows servis durum sorgusu (Spooler veya RpcSs)
+        status = query_service_status('RpcSs')
+        if status:
+            self.assertEqual(status['serviceName'], 'RpcSs')
+            self.assertTrue(status['isProtected'])
+            self.assertIn('status', status)
+
+        # 5. Yerel Win32 servis numaralandırma motoru
+        svcs = enum_services_native(limit=10)
+        self.assertIsInstance(svcs, list)
+        self.assertGreater(len(svcs), 0)
+        first_svc = svcs[0]
+        self.assertIn('name', first_svc)
+        self.assertIn('displayName', first_svc)
+        self.assertIn('status', first_svc)
+        self.assertIn('isProtected', first_svc)
+
 
 if __name__ == '__main__':
     unittest.main()

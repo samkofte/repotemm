@@ -3,11 +3,44 @@ import { exec } from 'child_process';
 import os from 'os';
 
 /**
- * IP adresi ve alt ag maskesinden yayin (broadcast) adresini hesaplar.
+ * IP adresi ve alt ag maskesi/CIDR degerinden yonlendirmeli (directed) broadcast adresini hesaplar.
+ * @param {string} ip - IPv4 adresi veya CIDR formatinda IP (orn: 192.168.1.55/24)
+ * @param {string|number} maskOrCidr - Alt ag maskesi (255.255.255.0) veya CIDR sayisi (24)
+ * @returns {string} Hesaplanmis broadcast adresi (orn: 192.168.1.255)
  */
-function calculateBroadcast(ip, netmask) {
+export function calculateDirectedBroadcast(ip, maskOrCidr) {
   try {
-    const ipParts = ip.split('.').map(Number);
+    let cleanIp = ip.trim();
+    let netmask = maskOrCidr;
+
+    // CIDR destegi: e.g. "192.168.1.50/24"
+    if (cleanIp.includes('/')) {
+      const [parsedIp, cidr] = cleanIp.split('/');
+      cleanIp = parsedIp;
+      netmask = parseInt(cidr, 10);
+    }
+
+    // Sayisal CIDR maskesini dot-decimal formata cevir
+    if (typeof netmask === 'number') {
+      const cidr = Math.max(0, Math.min(32, netmask));
+      const maskInt = (0xffffffff << (32 - cidr)) >>> 0;
+      netmask = [
+        (maskInt >>> 24) & 0xff,
+        (maskInt >>> 16) & 0xff,
+        (maskInt >>> 8) & 0xff,
+        maskInt & 0xff
+      ].join('.');
+    }
+
+    // Eger maske verilmemisse standart sinif varsayilanina bak
+    if (!netmask) {
+      const firstOctet = parseInt(cleanIp.split('.')[0], 10);
+      if (firstOctet < 128) netmask = '255.0.0.0';         // Class A
+      else if (firstOctet < 192) netmask = '255.255.0.0';  // Class B
+      else netmask = '255.255.255.0';                      // Class C
+    }
+
+    const ipParts = cleanIp.split('.').map(Number);
     const maskParts = netmask.split('.').map(Number);
     const broadcastParts = [];
     for (let i = 0; i < 4; i++) {
@@ -22,7 +55,7 @@ function calculateBroadcast(ip, netmask) {
 /**
  * Sunucudaki tum aktif ag bagdastiricilarinin broadcast adreslerini ve hedef alt agi dondurur.
  */
-export function getAllBroadcastAddresses(targetIp = '') {
+export function getAllBroadcastAddresses(targetIp = '', customNetmask = '') {
   const addresses = new Set(['255.255.255.255']);
 
   try {
@@ -31,7 +64,7 @@ export function getAllBroadcastAddresses(targetIp = '') {
       for (const iface of list) {
         if (iface.family === 'IPv4' && !iface.internal) {
           if (iface.netmask) {
-            const bcast = calculateBroadcast(iface.address, iface.netmask);
+            const bcast = calculateDirectedBroadcast(iface.address, iface.netmask);
             addresses.add(bcast);
           }
         }
@@ -41,10 +74,11 @@ export function getAllBroadcastAddresses(targetIp = '') {
 
   // Hedef IP ozel bir IPv4 ise, onun alt ag broadcast adresini ve dogrudan unicast adresini de ekle
   if (targetIp && targetIp.includes('.')) {
-    const parts = targetIp.split('.');
-    if (parts.length === 4) {
-      addresses.add(`${parts[0]}.${parts[1]}.${parts[2]}.255`);
-      addresses.add(targetIp); // Unicast WoL (akilli switch'ler icin)
+    const rawIp = targetIp.split('/')[0].trim();
+    if (rawIp.split('.').length === 4) {
+      const directedBcast = calculateDirectedBroadcast(targetIp, customNetmask);
+      addresses.add(directedBcast);
+      addresses.add(rawIp); // Unicast WoL (akilli switch'ler icin)
     }
   }
 
@@ -56,8 +90,9 @@ export function getAllBroadcastAddresses(targetIp = '') {
  * Paket kayiplarini onlemek icin 40ms araliklarla 3 dalga halinde gonderilir.
  * @param {string} macAddress - Hedef bilgisayarin MAC adresi (orn: AA:BB:CC:DD:EE:FF)
  * @param {string} targetIp - Hedef IP adresi (alt ag tespiti icin)
+ * @param {string} [netmask] - Istege bagli alt ag maskesi
  */
-export function sendWakeOnLan(macAddress, targetIp = '') {
+export function sendWakeOnLan(macAddress, targetIp = '', netmask = '') {
   return new Promise((resolve, reject) => {
     try {
       if (!macAddress || typeof macAddress !== 'string') {
@@ -77,7 +112,7 @@ export function sendWakeOnLan(macAddress, targetIp = '') {
         macBuf.copy(buf, 6 + i * 6);
       }
 
-      const targets = getAllBroadcastAddresses(targetIp);
+      const targets = getAllBroadcastAddresses(targetIp, netmask);
       const ports = [9, 7];
 
       const client = dgram.createSocket('udp4');

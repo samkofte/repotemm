@@ -211,3 +211,78 @@ test('DeviceRegistry: ALERT_OFFLINE Heartbeat Expiration (45s Inactivity)', asyn
   assert.ok(foundStale.telemetry.alerts.includes('ALERT_OFFLINE'), '45 saniye sessiz kalan makine ALERT_OFFLINE içermelidir');
 });
 
+
+test('RMM2 Binary Framing Codec: Packet Encoding, Decoding and Partial Chunk Stream Parsing', async () => {
+  const {
+    encodeRMM2,
+    decodeRMM2Header,
+    RMM2StreamParser,
+    isRMM2Buffer,
+    PKT_SCREEN_FRAME,
+    PKT_MOUSE_INPUT,
+    FLAG_JSON
+  } = await import('../server/rmm2_codec.js');
+
+  // 1. Raw binary frame (e.g., JPEG image)
+  const fakeJpeg = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0xFF, 0xD9]);
+  const packetBuf = encodeRMM2(PKT_SCREEN_FRAME, fakeJpeg);
+
+  assert.strictEqual(isRMM2Buffer(packetBuf), true);
+  assert.strictEqual(packetBuf.length, 12 + fakeJpeg.length);
+
+  const header = decodeRMM2Header(packetBuf);
+  assert.strictEqual(header.pktType, PKT_SCREEN_FRAME);
+  assert.strictEqual(header.flags, 0);
+  assert.strictEqual(header.payloadLength, fakeJpeg.length);
+
+  // 2. JSON payload encoding
+  const mouseCmd = { x: 0.45, y: 0.88, button: 'left', action: 'down' };
+  const jsonPacket = encodeRMM2(PKT_MOUSE_INPUT, mouseCmd);
+  const jsonHeader = decodeRMM2Header(jsonPacket);
+  assert.strictEqual(jsonHeader.pktType, PKT_MOUSE_INPUT);
+  assert.ok((jsonHeader.flags & FLAG_JSON) !== 0, 'FLAG_JSON biti aktif olmali');
+  const decodedObj = JSON.parse(jsonPacket.subarray(12).toString('utf8'));
+  assert.strictEqual(decodedObj.x, 0.45);
+  assert.strictEqual(decodedObj.action, 'down');
+
+  // 3. Stateful Stream Parser with fragmented chunk delivery
+  const parser = new RMM2StreamParser();
+
+  // Split packetBuf into 3 separate fragmented chunks (simulating TCP fragmentation)
+  const chunk1 = packetBuf.subarray(0, 5);  // partial header
+  const chunk2 = packetBuf.subarray(5, 14); // rest of header + start of payload
+  const chunk3 = packetBuf.subarray(14);    // rest of payload
+
+  const res1 = parser.feed(chunk1);
+  assert.strictEqual(res1.length, 0, 'Kismi paket henuz tamamlanmamis olmali');
+
+  const res2 = parser.feed(chunk2);
+  assert.strictEqual(res2.length, 0, 'Kismi paket henuz tamamlanmamis olmali');
+
+  const res3 = parser.feed(chunk3);
+  assert.strictEqual(res3.length, 1, 'Tum parcalar alindiginda tam paket uretilmeli');
+  assert.strictEqual(res3[0].pktType, PKT_SCREEN_FRAME);
+  assert.deepStrictEqual(res3[0].payload, fakeJpeg);
+});
+
+test('Wake-on-LAN: Directed Subnet Broadcast Calculation and Multi-Target Generation', async () => {
+  const { calculateDirectedBroadcast, getAllBroadcastAddresses } = await import('../server/wol.js');
+
+  // 1. Standart C Sınıfı (/24) alt ağ yayını
+  const bcastC = calculateDirectedBroadcast('192.168.1.100', '255.255.255.0');
+  assert.strictEqual(bcastC, '192.168.1.255');
+
+  // 2. CIDR önek gösterimi (/24)
+  const bcastCidr = calculateDirectedBroadcast('10.20.30.40/24');
+  assert.strictEqual(bcastCidr, '10.20.30.255');
+
+  // 3. Kurumsal B Sınıfı (/16) alt ağ yayını
+  const bcastB = calculateDirectedBroadcast('172.16.5.99/16');
+  assert.strictEqual(bcastB, '172.16.255.255');
+
+  // 4. Hedef IP verildiğinde hedef listesinde hem directed broadcast hem unicast hem 255.255.255.255 bulunmalı
+  const targets = getAllBroadcastAddresses('192.168.50.12/24');
+  assert.ok(targets.includes('255.255.255.255'));
+  assert.ok(targets.includes('192.168.50.255'));
+  assert.ok(targets.includes('192.168.50.12'));
+});

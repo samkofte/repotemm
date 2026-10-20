@@ -1036,6 +1036,15 @@ def handle_task_list(conn):
 
 def handle_service_list(conn):
     try:
+        from service_manager import enum_services_native
+        services = enum_services_native(150)
+        if services:
+            send_json_safe(conn, {'type': 'SERVICE_LIST_RES', 'services': services})
+            return
+    except Exception:
+        pass
+
+    try:
         import subprocess
         cmd = 'powershell -NoProfile -Command "Get-Service | Select-Object -First 100 Name, DisplayName, Status, StartType | ConvertTo-Json -Depth 1"'
         out = subprocess.check_output(cmd, shell=True, timeout=8).decode('utf-8', errors='ignore')
@@ -1062,14 +1071,15 @@ def handle_service_action(conn, cmd):
         s_name = cmd.get('serviceName', '').strip()
         action = cmd.get('action', '').strip().lower()
         if not s_name or action not in ('start', 'stop', 'restart'):
+            send_json_safe(conn, {'type': 'SERVICE_ERROR', 'message': 'Invalid service action or name'})
             return
-        if action == 'start':
-            os.system(f'net start "{s_name}" >nul 2>&1')
-        elif action == 'stop':
-            os.system(f'net stop "{s_name}" /y >nul 2>&1')
-        elif action == 'restart':
-            os.system(f'net stop "{s_name}" /y >nul 2>&1 && net start "{s_name}" >nul 2>&1')
-        send_json_safe(conn, {'type': 'SERVICE_ACTION_RES', 'serviceName': s_name, 'action': action, 'success': True})
+
+        from service_manager import control_service
+        ok, msg = control_service(s_name, action)
+        if ok:
+            send_json_safe(conn, {'type': 'SERVICE_ACTION_RES', 'serviceName': s_name, 'action': action, 'success': True, 'message': msg})
+        else:
+            send_json_safe(conn, {'type': 'SERVICE_ERROR', 'serviceName': s_name, 'action': action, 'message': msg})
     except Exception as e:
         send_json_safe(conn, {'type': 'SERVICE_ERROR', 'message': str(e)})
 

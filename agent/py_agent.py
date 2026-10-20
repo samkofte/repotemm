@@ -1501,6 +1501,9 @@ def handle_client(conn, addr):
     # Send current chat history immediately to connecting technician
     send_json_safe(conn, {'type': 'CHAT_BROADCAST', 'messages': list(CHAT_HISTORY)})
 
+    from stream_throttler import AdaptiveStreamController
+    throttler = AdaptiveStreamController(is_adaptive=True)
+    is_adaptive = [True]
     quality = [88]
     fps = [0.016]
     selected_monitor = ['ALL']
@@ -1547,8 +1550,18 @@ def handle_client(conn, addr):
                     time.sleep(2.0)
                     continue
 
+                if is_adaptive[0]:
+                    ad_params = throttler.get_current_params()
+                    curr_quality = ad_params['quality']
+                    target_delay = ad_params['targetDelaySec']
+                    active_tier = ad_params['tierName']
+                else:
+                    curr_quality = quality[0]
+                    target_delay = fps[0] if fps[0] > 0 else 0.016
+                    active_tier = 'MANUAL'
+
                 t0 = time.time()
-                frame = capture_gdi(quality[0], monitor_index=selected_monitor[0])
+                frame = capture_gdi(curr_quality, monitor_index=selected_monitor[0])
                 if frame:
                     cur_rect = get_target_capture_rect(selected_monitor[0])
                     send_json_safe(conn, {
@@ -1558,10 +1571,11 @@ def handle_client(conn, addr):
                         'width': cur_rect[2],
                         'height': cur_rect[3],
                         'blackedOut': BLACKOUT,
-                        'monitor': selected_monitor[0]
+                        'monitor': selected_monitor[0],
+                        'tier': active_tier,
+                        'quality': curr_quality
                     })
                 elapsed = time.time() - t0
-                target_delay = fps[0] if fps[0] > 0 else 0.016
                 time.sleep(max(0.001, target_delay - elapsed))
             except Exception:
                 time.sleep(0.05)
@@ -1624,10 +1638,25 @@ def handle_client(conn, addr):
                     send_json_safe(conn, {'type': 'THUMBNAIL_RESPONSE', 'frame': th})
                 elif t=='TELEMETRY_REQUEST':
                     send_json_safe(conn, {'type': 'TELEMETRY_RESPONSE', 'data': collect_full_telemetry()})
-                elif t=='SET_QUALITY': quality[0] = max(30,min(95,int(cmd.get('quality',88))))
+                elif t=='SET_QUALITY':
+                    req_q = int(cmd.get('quality', 88))
+                    if req_q <= 0:
+                        is_adaptive[0] = True
+                        throttler.set_adaptive(True)
+                    else:
+                        is_adaptive[0] = False
+                        throttler.set_adaptive(False)
+                        quality[0] = max(30, min(95, req_q))
                 elif t=='SET_FPS':
-                    req_fps = int(cmd.get('fps',0))
+                    req_fps = int(cmd.get('fps', 0))
+                    is_adaptive[0] = False
+                    throttler.set_adaptive(False)
                     fps[0] = 0.016 if (req_fps <= 0 or req_fps >= 60) else (1.0 / max(5, req_fps))
+                elif t=='RTT_REPORT':
+                    rtt_val = float(cmd.get('rtt', 25.0))
+                    throttler.record_rtt(rtt_val)
+                elif t=='THROTTLE_BACKPRESSURE':
+                    throttler.record_backpressure_drop(int(cmd.get('count', 1)))
 
                 elif t=='AUDIO_CHUNK':
                     try:

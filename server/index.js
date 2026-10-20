@@ -591,6 +591,8 @@ wss.on('connection', (ws, req) => {
       console.log(`[Gateway] Connected directly to Agent on ${targetHost}:${targetPort}`);
     });
 
+    let consecutiveDrops = 0;
+
     tcpClient.on('data', (chunk) => {
       if (isCancelled) return;
       buffer += chunk.toString('utf8');
@@ -683,10 +685,17 @@ wss.on('connection', (ws, req) => {
 
 
         if (ws.readyState === WebSocket.OPEN && !isCancelled) {
-          // Backpressure protection: eger ag/tarayici yetisemiyorsa bayat video karesini atla
-          if (isFrame && ws.bufferedAmount > 512 * 1024) {
+          // Backpressure protection: eger ag/tarayici yetisemiyorsa bayat video karesini atla (256KB siniri)
+          if (isFrame && ws.bufferedAmount > 256 * 1024) {
+            consecutiveDrops++;
+            if (consecutiveDrops % 2 === 0) {
+              try {
+                tcpClient.write(JSON.stringify({ type: 'THROTTLE_BACKPRESSURE', count: 1 }) + '\n');
+              } catch (e) {}
+            }
             continue;
           }
+          consecutiveDrops = 0;
           ws.send(line);
         }
       }

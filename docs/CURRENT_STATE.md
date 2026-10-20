@@ -89,7 +89,8 @@ flowchart LR
 | **Saf Win32 Süreç & Güç Yöneticisi** | ✅ Tamamlandı | Toolhelp32 & PSAPI ile mikrosaniyelik süreç listeleme, Kernel Kill Kalkanı, Native Win32 Güç Yönetimi (`agent/system_manager.py`). |
 | **Operatör & RBAC Oturum Motoru** | ✅ Tamamlandı | PBKDF2-HMAC-SHA512 tuzlanmış parola güvenliği, kriptografik HMAC-SHA256 oturum token'ları, Operatör Yönetim Paneli (`server/auth.js`). |
 | **256 KB Parçalı Transfer & Güvenli Dosya** | ✅ Tamamlandı | 256 KB chunked upload/download, SHA-256 anlık tahrifat imhası, SAM/SYSTEM yol koruması (`agent/file_manager.py`). |
-| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (39/39 passed) ve Node.js test runner (11/11 passed) — Toplam 50 test %100 Başarılı. |
+| **Adaptif Akış & Geri Basınç Motoru** | ✅ Tamamlandı | Otonom RTT EMA gecikme izleme, 4 kademeli dinamik kalite/FPS uyarlama, 256KB Gateway geri basınç düşürme (`agent/stream_throttler.py`). |
+| **Otomatik Test Altyapısı** | ✅ Tamamlandı | Python unittest (42/42 passed) ve Node.js test runner (11/11 passed) — Toplam 53 test %100 Başarılı. |
 
 ---
 
@@ -175,3 +176,15 @@ flowchart LR
     - **SHA-256 Tahrifat Koruması (Immediate Destruction):** Dosya parçaları tamamlandığında hedef makinede anında SHA-256 özeti hesaplanır. Operatörün gönderdiği özetle uyuşmazlık tespit edildiğinde dosya derhal kalıcı olarak silinir (`TAMPER_DETECTED_SHA256_MISMATCH`) ve işletim sisteminde sahte veri bırakılmaz.
     - **Sıfır-Güven Dizin Kalkanı (`is_safe_path`):** SAM, SYSTEM kayıt kovanları (`System32\config`), ağ yapılandırmaları (`System32\drivers\etc`), NTFS gizli veri akışları (`:stream`) ve dizin atlama (`..`) girişimleri tüm dosya işlemlerinde (`FS_LIST`, `FS_DOWNLOAD`, `FS_UPLOAD`, `FS_DELETE`, `FS_MKDIR`, `FS_EXEC`) engellendi.
     - Toplam 50 otomatik test (39 Python, 11 Node.js) — %100 Başarı Oranı.
+
+14. **Aşama 14: Adaptif Ağ Gecikmesi & Dinamik Bant Genişliği Uyarlama Motoru (TAMAMLANDI)**
+    - **Otonom RTT EMA Gecikme Takibi (Bölüm 4.1):** Operatör ile hedef makine arasındaki gidiş-dönüş süresi (`RTT`) `agent/stream_throttler.py` altında üstel hareketli ortalama (EMA $\alpha=0.3$) filtresiyle sürekli izlendi.
+    - **4 Kademeli Dinamik Kalite ve FPS Uyarlaması:**
+      - **Kademe 1 (RTT $\le$ 60ms):** `ULTRA_60FPS` (Kalite %92, Hedef FPS 60, Gecikme 16ms).
+      - **Kademe 2 (60ms < RTT $\le$ 150ms):** `BALANCED_30FPS` (Kalite %78, Hedef FPS 30, Gecikme 33ms).
+      - **Kademe 3 (150ms < RTT $\le$ 300ms):** `CONSERVE_18FPS` (Kalite %58, Hedef FPS 18, Gecikme 55ms — Bant genişliğini %70 korur).
+      - **Kademe 4 (RTT > 300ms):** `LOW_BANDWIDTH_8FPS` (Kalite %40, Hedef FPS 8, Gecikme 125ms — Zayıf mobil/uydu ağ koruması).
+    - **Hysteresis & Hızlı Düşüş:** Ağ gecikmesi aniden fırladığında sistem derhal alt kademeye iner; ağ toparlandığında ise dalgalanmayı önlemek için 3 ardışık iyi örnek doğrulanmadan üst kademeye geçilmez.
+    - **Gateway 256KB Geri Basınç Kalkanı:** Gateway sunucusunda WebSocket `bufferedAmount > 256KB` olduğunda bayat video kareleri atlanır ve ardışık tıkanmalarda ajana `THROTTLE_BACKPRESSURE` bildirimi basılarak sıkıştırma artırılır.
+    - **NOC HUD Canlı Adaptif Geri Bildirim:** Canlı Konsol menüsüne "⚡ Otomatik Adaptif" seçeneği eklendi ve canlı HUD rozetinde anlık kademe (`ULTRA_60FPS`, `BALANCED_30FPS` vb.) operatöre dinamik raporlandı.
+    - Toplam 53 otomatik test (42 Python, 11 Node.js) — %100 Başarı Oranı.

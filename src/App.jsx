@@ -43,8 +43,9 @@ export default function App() {
   const [monitors, setMonitors] = useState([]);
   const [selectedMonitorIndex, setSelectedMonitorIndex] = useState('ALL');
   const [activeMonitor, setActiveMonitor] = useState('Primary Screen');
-  const [streamQuality, setStreamQuality] = useState(80);
-  const [targetFps, setTargetFps] = useState(30);
+  const [streamQuality, setStreamQuality] = useState(0); // 0 = Auto-Adaptive
+  const [streamTier, setStreamTier] = useState('ULTRA_60FPS');
+  const [targetFps, setTargetFps] = useState(60);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
 
 
@@ -533,6 +534,9 @@ export default function App() {
               screenImgRef.current.src = `data:image/jpeg;base64,${data.frame}`;
             }
             if (!hasFrame) setHasFrame(true);
+            if (data.tier) {
+              setStreamTier(data.tier);
+            }
             frameCountRef.current++;
             const now = Date.now();
             if (now - lastFpsCalcRef.current >= 1000) {
@@ -546,7 +550,11 @@ export default function App() {
           }
         } else if (data.type === 'PONG') {
           if (data.timestamp) {
-            setLatency(Math.max(1, Date.now() - data.timestamp));
+            const currentRtt = Math.max(1, Date.now() - data.timestamp);
+            setLatency(currentRtt);
+            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN && streamQuality === 0) {
+              socketRef.current.send(JSON.stringify({ type: 'RTT_REPORT', rtt: currentRtt }));
+            }
           }
         } else if (data.type === 'CHAT_BROADCAST') {
           setChatMessages(data.messages);
@@ -1971,8 +1979,9 @@ export default function App() {
                     value={streamQuality}
                     onChange={(e) => changeStreamQuality(Number(e.target.value))}
                     className="bg-transparent text-indigo-300 font-bold outline-none cursor-pointer"
-                    title="Yayın Kalitesi"
+                    title="Yayın Kalitesi & Adaptif Akış"
                   >
+                    <option value={0} className="bg-slate-900 text-cyan-300 font-bold">⚡ Otomatik Adaptif</option>
                     <option value={95} className="bg-slate-900 text-slate-200">Ultra (95%)</option>
                     <option value={88} className="bg-slate-900 text-slate-200">Yüksek (88%)</option>
                     <option value={75} className="bg-slate-900 text-slate-200">Dengeli (75%)</option>
@@ -1988,6 +1997,12 @@ export default function App() {
                   <span className="text-emerald-400 font-bold">{fps} FPS</span>
                   <span className="text-slate-600">•</span>
                   <span className="text-cyan-400 font-semibold">{latency}ms</span>
+                  {streamQuality === 0 && (
+                    <>
+                      <span className="text-slate-600">•</span>
+                      <span className="text-amber-300 font-bold tracking-tight">{streamTier}</span>
+                    </>
+                  )}
                 </div>
 
                 {operatorRole === 'AUDITOR' && (
